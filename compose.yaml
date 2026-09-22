@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-plusone}
+      POSTGRES_USER: ${POSTGRES_USER:-plusone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plusone}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-plusone} -d ${POSTGRES_DB:-plusone}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://plusone:plusone@postgres:5432/plusone}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_MINI_APP_URL: ${MAX_MINI_APP_URL:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
