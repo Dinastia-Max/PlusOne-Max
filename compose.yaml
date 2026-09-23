@@ -28,5 +28,13 @@ services:
       postgres:
         condition: service_healthy
 
+  bot:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.bot"]
+    environment:
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+    restart: unless-stopped
+
 volumes:
   postgres_data:
