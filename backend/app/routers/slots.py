@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_current_user_id
 from app.models import Field, Participation, Slot
 from app.schemas import FieldResponse, SlotDetail, SlotListItem
 
@@ -83,3 +84,89 @@ async def get_slot(
         min_players=slot.min_players,
         host_id=slot.host_id,
     )
+
+
+@router.post("/{slot_id}/join", status_code=status.HTTP_204_NO_CONTENT)
+async def join_slot(
+    slot_id: int,
+    user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    async with session.begin():
+        result = await session.execute(
+            select(Slot).where(Slot.id == slot_id).with_for_update()
+        )
+        slot = result.scalar_one_or_none()
+
+        if slot is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Slot not found",
+            )
+
+        now = datetime.now(timezone.utc)
+        if slot.canceled_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Slot is canceled",
+            )
+        if slot.start_at <= now:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Slot has already started",
+            )
+
+        result = await session.execute(
+            select(Participation).where(
+                Participation.slot_id == slot_id,
+                Participation.user_id == user_id,
+            )
+        )
+        if result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User has already joined this slot",
+            )
+
+        participants_count = await session.scalar(
+            select(func.count())
+            .select_from(Participation)
+            .where(Participation.slot_id == slot_id)
+        )
+        if (participants_count or 0) >= slot.max_players:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Slot is full",
+            )
+
+        session.add(Participation(slot_id=slot_id, user_id=user_id))
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/{slot_id}/join", status_code=status.HTTP_204_NO_CONTENT)
+async def leave_slot(
+    slot_id: int,
+    user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    async with session.begin():
+        result = await session.execute(
+            select(Participation)
+            .where(
+                Participation.slot_id == slot_id,
+                Participation.user_id == user_id,
+            )
+            .with_for_update()
+        )
+        participation = result.scalar_one_or_none()
+
+        if participation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Participation not found",
+            )
+
+        await session.delete(participation)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
