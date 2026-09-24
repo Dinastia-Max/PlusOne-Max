@@ -25,3 +25,11 @@ class SlotListItem(BaseModel):
 class SlotDetail(SlotListItem):
     min_players: int
     host_id: int
+
+
+class ParticipantResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: int
+    brings_ball: bool
+    joined_at: datetime

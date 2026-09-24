@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user_id
 from app.models import Field, Participation, Slot
-from app.schemas import FieldResponse, SlotDetail, SlotListItem
+from app.schemas import (
+    FieldResponse,
+    ParticipantResponse,
+    SlotDetail,
+    SlotListItem,
+)
 
 
 router = APIRouter(prefix="/slots", tags=["slots"])
@@ -170,3 +175,34 @@ async def leave_slot(
         await session.delete(participation)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{slot_id}/participants",
+    response_model=list[ParticipantResponse],
+)
+async def get_slot_participants(
+    slot_id: int,
+    session: AsyncSession = Depends(get_db),
+) -> list[ParticipantResponse]:
+    slot_exists = await session.scalar(
+        select(Slot.id).where(
+            Slot.id == slot_id,
+            Slot.canceled_at.is_(None),
+        )
+    )
+    if slot_exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Slot not found",
+        )
+
+    result = await session.scalars(
+        select(Participation)
+        .where(Participation.slot_id == slot_id)
+        .order_by(Participation.joined_at, Participation.user_id)
+    )
+    return [
+        ParticipantResponse.model_validate(participation)
+        for participation in result.all()
+    ]
