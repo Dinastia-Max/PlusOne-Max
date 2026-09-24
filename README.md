@@ -21,3 +21,16 @@ docker compose up --build
 
 Токен нельзя добавлять в Git. Long Polling используется только для локальной
 разработки; перед публикацией бот должен быть переведён на HTTPS Webhook.
+
+## Запуск mini app
+
+Frontend запускается вместе с остальными сервисами:
+
+```bash
+docker compose up --build
+```
+
+После запуска откройте `http://localhost:5173`. Mini app показывает список
+игр из backend и карточку выбранного слота. Для публикации в MAX укажите
+публичные HTTPS-адреса frontend и API в `MAX_MINI_APP_URL`, `VITE_API_URL` и
+`CORS_ORIGINS`, затем добавьте адрес mini app в настройках чат-бота MAX.
