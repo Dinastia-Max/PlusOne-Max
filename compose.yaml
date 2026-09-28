@@ -22,6 +22,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://plusone:plusone@postgres:5432/plusone}
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
       MAX_MINI_APP_URL: ${MAX_MINI_APP_URL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8443,http://localhost:5173}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -42,7 +43,7 @@ services:
     ports:
       - "${MINI_APP_PORT:-8080}:80"
     volumes:
-      - ./miniapp:/usr/share/nginx/html:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
 
 volumes:
   postgres_data:
