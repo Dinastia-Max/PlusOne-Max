@@ -137,6 +137,34 @@ async def get_slot(
     )
 
 
+@router.delete("/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_slot(
+    slot_id: int,
+    user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    async with session.begin():
+        result = await session.execute(
+            select(Slot).where(Slot.id == slot_id).with_for_update()
+        )
+        slot = result.scalar_one_or_none()
+
+        if slot is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Slot not found",
+            )
+        if slot.host_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the host can cancel this slot",
+            )
+        if slot.canceled_at is None:
+            slot.canceled_at = datetime.now(timezone.utc)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/{slot_id}/join", status_code=status.HTTP_204_NO_CONTENT)
 async def join_slot(
     slot_id: int,
