@@ -11,8 +11,8 @@ API_URL = "https://platform-api2.max.ru"
 UPDATE_TYPES = "bot_started,message_created"
 WELCOME_TEXT = (
     "Привет! Это ПлюсОдин.\n\n"
-    "Здесь можно найти футбольную игру рядом или собрать свою. "
-    "Мини-приложение скоро появится в этом чате."
+    "Открой мини-приложение, чтобы найти футбольную игру рядом "
+    "или собрать свою."
 )
 
 logging.basicConfig(
@@ -25,6 +25,7 @@ logger = logging.getLogger("plusone.bot")
 class MaxBot:
     def __init__(self, token: str) -> None:
         timeout = httpx.Timeout(95.0, connect=15.0)
+        self.web_app = ""
         self.client = httpx.AsyncClient(
             base_url=API_URL,
             headers={"Authorization": token},
@@ -53,11 +54,38 @@ class MaxBot:
         return response.json()
 
     async def send_welcome(self, user_id: int) -> None:
+        body: dict[str, Any] = {"text": WELCOME_TEXT}
+        if self.web_app:
+            body["attachments"] = [
+                {
+                    "type": "inline_keyboard",
+                    "payload": {
+                        "buttons": [
+                            [
+                                {
+                                    "type": "open_app",
+                                    "text": "Открыть приложение",
+                                    "web_app": self.web_app,
+                                }
+                            ]
+                        ]
+                    },
+                }
+            ]
+        else:
+            body["text"] += "\n\nМини-приложение пока не подключено."
+
         response = await self.client.post(
             "/messages",
             params={"user_id": user_id},
-            json={"text": WELCOME_TEXT},
+            json=body,
         )
+        if not response.is_success:
+            logger.error(
+                "MAX send message failed: status=%s body=%s",
+                response.status_code,
+                response.text,
+            )
         response.raise_for_status()
 
 
@@ -95,7 +123,8 @@ async def handle_update(bot: MaxBot, update: dict[str, Any]) -> None:
 
 
 async def run() -> None:
-    token = get_settings().max_bot_token.strip()
+    settings = get_settings()
+    token = settings.max_bot_token.strip()
     if not token:
         raise RuntimeError("MAX_BOT_TOKEN is not configured")
 
@@ -103,6 +132,8 @@ async def run() -> None:
     marker: int | None = None
     try:
         me = await bot.get_me()
+        if settings.max_mini_app_url:
+            bot.web_app = me.get("username") or ""
         logger.info(
             "Connected to MAX as @%s (id=%s)",
             me.get("username") or "unknown",
@@ -113,7 +144,13 @@ async def run() -> None:
             try:
                 payload = await bot.get_updates(marker)
                 for update in payload.get("updates", []):
-                    await handle_update(bot, update)
+                    try:
+                        await handle_update(bot, update)
+                    except httpx.HTTPError:
+                        logger.exception(
+                            "Failed to handle update %s; skipping",
+                            update.get("update_type"),
+                        )
                 marker = payload.get("marker", marker)
             except httpx.HTTPError:
                 logger.exception("MAX API request failed; retrying in 5 seconds")
