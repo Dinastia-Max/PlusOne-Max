@@ -15,6 +15,21 @@ services:
       timeout: 3s
       retries: 10
 
+  test-postgres:
+    profiles: ["test"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: plusone_test
+      POSTGRES_USER: plusone_test
+      POSTGRES_PASSWORD: plusone_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plusone_test -d plusone_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
   backend:
     build:
       context: ./backend
@@ -26,6 +41,23 @@ services:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       postgres:
+        condition: service_healthy
+
+  backend-test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && python -m unittest discover -s tests -v
+    environment:
+      DATABASE_URL: postgresql+asyncpg://plusone_test:plusone_test@test-postgres:5432/plusone_test
+      RUN_API_INTEGRATION_TESTS: "1"
+    volumes:
+      - ./backend/tests:/app/tests:ro
+    depends_on:
+      test-postgres:
         condition: service_healthy
 
   bot:
