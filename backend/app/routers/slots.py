@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -46,6 +46,27 @@ def slots_query():
         .outerjoin(Participation, Participation.slot_id == Slot.id)
         .where(Slot.canceled_at.is_(None))
         .group_by(Slot.id, Field.id)
+    )
+
+
+def overlapping_slots_query(user_id: int, slot: Slot):
+    return (
+        select(Slot.id)
+        .outerjoin(
+            Participation,
+            and_(
+                Participation.slot_id == Slot.id,
+                Participation.user_id == user_id,
+            ),
+        )
+        .where(
+            Slot.id != slot.id,
+            Slot.canceled_at.is_(None),
+            or_(Slot.host_id == user_id, Participation.user_id == user_id),
+            Slot.start_at < slot.end_at,
+            Slot.end_at > slot.start_at,
+        )
+        .limit(1)
     )
 
 
@@ -172,6 +193,8 @@ async def join_slot(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     async with session.begin():
+        await session.scalar(select(func.pg_advisory_xact_lock(user_id)))
+
         result = await session.execute(
             select(Slot).where(Slot.id == slot_id).with_for_update()
         )
@@ -205,6 +228,15 @@ async def join_slot(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="User has already joined this slot",
+            )
+
+        overlapping_slot_id = await session.scalar(
+            overlapping_slots_query(user_id, slot)
+        )
+        if overlapping_slot_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User has an overlapping slot",
             )
 
         participants_count = await session.scalar(

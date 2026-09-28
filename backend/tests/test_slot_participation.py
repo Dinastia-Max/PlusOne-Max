@@ -3,10 +3,13 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
+from app.database import Base
 from app.main import app
-from app.models import Participation, Slot
-from app.routers.slots import join_slot, leave_slot
+from app.models import Field, Participation, Slot
+from app.routers.slots import join_slot, leave_slot, overlapping_slots_query
 
 
 class FakeResult:
@@ -26,9 +29,15 @@ class TransactionContext:
 
 
 class FakeSession:
-    def __init__(self, *results, participants_count=0):
+    def __init__(
+        self,
+        *results,
+        overlapping_slot_id=None,
+        participants_count=0,
+    ):
         self.results = list(results)
-        self.participants_count = participants_count
+        self.scalar_results = [None, overlapping_slot_id, participants_count]
+        self.scalar_statements = []
         self.added = []
         self.deleted = []
 
@@ -39,7 +48,8 @@ class FakeSession:
         return FakeResult(self.results.pop(0))
 
     async def scalar(self, statement):
-        return self.participants_count
+        self.scalar_statements.append(statement)
+        return self.scalar_results.pop(0)
 
     def add(self, value):
         self.added.append(value)
@@ -73,6 +83,7 @@ class JoinSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(session.added), 1)
         self.assertEqual(session.added[0].slot_id, 1)
         self.assertEqual(session.added[0].user_id, 42)
+        self.assertIn("pg_advisory_xact_lock", str(session.scalar_statements[0]))
 
     async def test_missing_slot_returns_not_found(self):
         session = FakeSession(None)
@@ -91,6 +102,19 @@ class JoinSlotTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(context.exception.status_code, status.HTTP_409_CONFLICT)
         self.assertEqual(context.exception.detail, "User has already joined this slot")
+
+    async def test_user_cannot_join_overlapping_slot(self):
+        session = FakeSession(
+            future_slot(),
+            None,
+            overlapping_slot_id=2,
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            await join_slot(slot_id=1, user_id=42, session=session)
+
+        self.assertEqual(context.exception.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(context.exception.detail, "User has an overlapping slot")
 
     async def test_user_cannot_join_full_slot(self):
         slot = future_slot(max_players=12)
@@ -143,6 +167,107 @@ class LeaveSlotTest(unittest.IsolatedAsyncioTestCase):
             await leave_slot(slot_id=1, user_id=42, session=session)
 
         self.assertEqual(context.exception.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class OverlappingSlotsQueryTest(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite://")
+        Base.metadata.create_all(self.engine)
+
+    def tearDown(self):
+        self.engine.dispose()
+
+    def test_finds_hosted_and_joined_overlapping_slots(self):
+        now = datetime.now(timezone.utc)
+        target = future_slot(
+            id=10,
+            start_at=now + timedelta(hours=2),
+            end_at=now + timedelta(hours=4),
+        )
+
+        with Session(self.engine) as session:
+            session.add(
+                Field(
+                    id=1,
+                    name="Test field",
+                    address="Test address",
+                    district="SVAO",
+                )
+            )
+            session.add_all(
+                [
+                    future_slot(
+                        id=1,
+                        host_id=43,
+                        start_at=now + timedelta(hours=1),
+                        end_at=now + timedelta(hours=3),
+                    ),
+                    future_slot(
+                        id=2,
+                        host_id=7,
+                        start_at=now + timedelta(hours=3),
+                        end_at=now + timedelta(hours=5),
+                    ),
+                ]
+            )
+            session.add(Participation(slot_id=2, user_id=42))
+            session.commit()
+
+            joined_result = session.scalars(
+                overlapping_slots_query(42, target)
+            ).all()
+            hosted_result = session.scalars(
+                overlapping_slots_query(43, target)
+            ).all()
+
+        self.assertEqual(joined_result, [2])
+        self.assertEqual(hosted_result, [1])
+
+    def test_allows_touching_boundaries_and_ignores_canceled_slots(self):
+        now = datetime.now(timezone.utc)
+        target = future_slot(
+            id=10,
+            start_at=now + timedelta(hours=2),
+            end_at=now + timedelta(hours=4),
+        )
+
+        with Session(self.engine) as session:
+            session.add(
+                Field(
+                    id=1,
+                    name="Test field",
+                    address="Test address",
+                    district="SVAO",
+                )
+            )
+            session.add_all(
+                [
+                    future_slot(
+                        id=1,
+                        host_id=42,
+                        start_at=now,
+                        end_at=target.start_at,
+                    ),
+                    future_slot(
+                        id=2,
+                        host_id=42,
+                        start_at=target.end_at,
+                        end_at=now + timedelta(hours=6),
+                    ),
+                    future_slot(
+                        id=3,
+                        host_id=42,
+                        start_at=now + timedelta(hours=3),
+                        end_at=now + timedelta(hours=5),
+                        canceled_at=now,
+                    ),
+                ]
+            )
+            session.commit()
+
+            result = session.scalars(overlapping_slots_query(42, target)).all()
+
+        self.assertEqual(result, [])
 
 
 class CurrentUserHeaderTest(unittest.TestCase):
