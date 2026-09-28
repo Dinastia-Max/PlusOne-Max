@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -10,6 +10,7 @@ from app.models import Field, Participation, Slot
 from app.schemas import (
     FieldResponse,
     ParticipantResponse,
+    SlotCreate,
     SlotDetail,
     SlotListItem,
 )
@@ -45,6 +46,72 @@ def slots_query():
         .outerjoin(Participation, Participation.slot_id == Slot.id)
         .where(Slot.canceled_at.is_(None))
         .group_by(Slot.id, Field.id)
+    )
+
+
+def overlapping_slots_query(user_id: int, slot: Slot):
+    return (
+        select(Slot.id)
+        .outerjoin(
+            Participation,
+            and_(
+                Participation.slot_id == Slot.id,
+                Participation.user_id == user_id,
+            ),
+        )
+        .where(
+            Slot.id != slot.id,
+            Slot.canceled_at.is_(None),
+            or_(Slot.host_id == user_id, Participation.user_id == user_id),
+            Slot.start_at < slot.end_at,
+            Slot.end_at > slot.start_at,
+        )
+        .limit(1)
+    )
+
+
+@router.post("", response_model=SlotDetail, status_code=status.HTTP_201_CREATED)
+async def create_slot(
+    slot_data_in: SlotCreate,
+    user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+) -> SlotDetail:
+    if slot_data_in.start_at <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Slot must start in the future",
+        )
+
+    async with session.begin():
+        result = await session.execute(
+            select(Field).where(
+                Field.id == slot_data_in.field_id,
+                Field.is_active.is_(True),
+            )
+        )
+        field = result.scalar_one_or_none()
+        if field is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Active field not found",
+            )
+
+        slot = Slot(
+            field_id=slot_data_in.field_id,
+            host_id=user_id,
+            start_at=slot_data_in.start_at,
+            end_at=slot_data_in.end_at,
+            min_players=slot_data_in.min_players,
+            max_players=slot_data_in.max_players,
+            has_ball=slot_data_in.has_ball,
+        )
+        session.add(slot)
+        await session.flush()
+
+    return SlotDetail(
+        **slot_data(slot, field, participants_count=0),
+        min_players=slot.min_players,
+        host_id=slot.host_id,
     )
 
 
@@ -91,6 +158,34 @@ async def get_slot(
     )
 
 
+@router.delete("/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def cancel_slot(
+    slot_id: int,
+    user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    async with session.begin():
+        result = await session.execute(
+            select(Slot).where(Slot.id == slot_id).with_for_update()
+        )
+        slot = result.scalar_one_or_none()
+
+        if slot is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Slot not found",
+            )
+        if slot.host_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the host can cancel this slot",
+            )
+        if slot.canceled_at is None:
+            slot.canceled_at = datetime.now(timezone.utc)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/{slot_id}/join", status_code=status.HTTP_204_NO_CONTENT)
 async def join_slot(
     slot_id: int,
@@ -98,6 +193,8 @@ async def join_slot(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     async with session.begin():
+        await session.scalar(select(func.pg_advisory_xact_lock(user_id)))
+
         result = await session.execute(
             select(Slot).where(Slot.id == slot_id).with_for_update()
         )
@@ -131,6 +228,15 @@ async def join_slot(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="User has already joined this slot",
+            )
+
+        overlapping_slot_id = await session.scalar(
+            overlapping_slots_query(user_id, slot)
+        )
+        if overlapping_slot_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User has an overlapping slot",
             )
 
         participants_count = await session.scalar(
