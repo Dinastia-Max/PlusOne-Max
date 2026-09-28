@@ -37,8 +37,14 @@ export class ApiError extends Error {
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   let response: Response;
+  const headers = new Headers({ Accept: "application/json" });
+  const initData = (
+    window as unknown as { WebApp?: { initData?: string } }
+  ).WebApp?.initData;
+  if (initData) headers.set("X-Max-Init-Data", initData);
+
   try {
-    response = await fetch(`${API_URL}${path}`, { signal, headers: { Accept: "application/json" } });
+    response = await fetch(`${API_URL}${path}`, { signal, headers });
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new ApiError("network", "Сервер недоступен");
