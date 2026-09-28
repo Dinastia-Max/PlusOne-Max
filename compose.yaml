@@ -10,7 +10,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-plusone} -d ${POSTGRES_DB:-plusone}"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-plusone} -d ${POSTGRES_DB:-plusone}
       interval: 5s
       timeout: 3s
       retries: 10
@@ -28,11 +30,20 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    command:
+      - sh
+      - -c
+      - >
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
 
   bot:
     build:
       context: ./backend
-    command: ["python", "-m", "app.bot"]
+    command:
+      - python
+      - -m
+      - app.bot
     environment:
       MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
       MAX_MINI_APP_URL: ${MAX_MINI_APP_URL:-}
