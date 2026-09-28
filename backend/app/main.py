@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 
+from app.routers.fields import router as fields_router
 from app.routers.slots import router as slots_router
 
 
@@ -9,6 +10,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
         description="API мини-приложения PlusOne в MAX",
     )
+    app.include_router(fields_router)
     app.include_router(slots_router)
     return app
 
