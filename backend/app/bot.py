@@ -14,6 +14,12 @@ WELCOME_TEXT = (
     "Открой мини-приложение, чтобы найти футбольную игру рядом "
     "или собрать свою."
 )
+BOT_COMMANDS = [
+    {
+        "name": "start",
+        "description": "Открыть ПлюсОдин",
+    }
+]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,6 +58,13 @@ class MaxBot:
         response = await self.client.get("/updates", params=params)
         response.raise_for_status()
         return response.json()
+
+    async def set_commands(self) -> None:
+        response = await self.client.patch(
+            "/me/commands",
+            json={"commands": BOT_COMMANDS},
+        )
+        response.raise_for_status()
 
     async def send_welcome(self, user_id: int) -> None:
         body: dict[str, Any] = {"text": WELCOME_TEXT}
@@ -132,6 +145,7 @@ async def run() -> None:
     marker: int | None = None
     try:
         me = await bot.get_me()
+        await bot.set_commands()
         if settings.max_mini_app_url:
             bot.web_app = me.get("username") or ""
         logger.info(
