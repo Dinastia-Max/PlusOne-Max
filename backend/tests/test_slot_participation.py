@@ -10,6 +10,7 @@ from app.database import Base
 from app.main import app
 from app.models import Field, Participation, Slot
 from app.routers.slots import join_slot, leave_slot, overlapping_slots_query
+from test_support import ConfiguredAuthTestCase
 
 
 class FakeResult:
@@ -270,19 +271,19 @@ class OverlappingSlotsQueryTest(unittest.TestCase):
         self.assertEqual(result, [])
 
 
-class CurrentUserHeaderTest(unittest.TestCase):
+class CurrentUserHeaderTest(ConfiguredAuthTestCase):
     def test_join_requires_user_header(self):
         response = TestClient(app).post("/slots/1/join")
 
-        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_CONTENT)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_user_id_must_be_positive(self):
+    def test_legacy_user_id_header_is_not_accepted(self):
         response = TestClient(app).post(
             "/slots/1/join",
             headers={"X-User-Id": "0"},
         )
 
-        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_CONTENT)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 if __name__ == "__main__":

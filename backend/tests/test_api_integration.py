@@ -1,7 +1,12 @@
 import asyncio
+import hashlib
+import hmac
+import json
 import os
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import delete
@@ -15,6 +20,7 @@ from app.models import Field, Participation, Slot
 
 RUN_INTEGRATION_TESTS = os.getenv("RUN_API_INTEGRATION_TESTS") == "1"
 TEST_DATABASE_URL = os.getenv("DATABASE_URL", "")
+TEST_BOT_TOKEN = os.getenv("MAX_BOT_TOKEN", "test-bot-token")
 
 
 @unittest.skipUnless(
@@ -63,7 +69,31 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
     @staticmethod
     def headers(user_id: int) -> dict[str, str]:
-        return {"X-User-Id": str(user_id)}
+        params = {
+            "auth_date": str(int(time.time())),
+            "query_id": f"integration-test-{user_id}",
+            "user": json.dumps(
+                {"id": user_id, "first_name": "Test"},
+                separators=(",", ":"),
+            ),
+        }
+        launch_params = "\n".join(
+            f"{key}={value}" for key, value in sorted(params.items())
+        )
+        secret_key = hmac.new(
+            b"WebAppData",
+            TEST_BOT_TOKEN.encode(),
+            hashlib.sha256,
+        ).digest()
+        params["hash"] = hmac.new(
+            secret_key,
+            launch_params.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        init_data = "&".join(
+            f"{key}={quote(value, safe='')}" for key, value in params.items()
+        )
+        return {"X-Max-Init-Data": init_data}
 
     @staticmethod
     def slot_payload(
@@ -140,7 +170,7 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
             "/slots",
             json=self.slot_payload(),
         )
-        self.assertEqual(unauthorized.status_code, 422)
+        self.assertEqual(unauthorized.status_code, 401)
 
         missing = await self.client.post(
             "/slots/999/join",

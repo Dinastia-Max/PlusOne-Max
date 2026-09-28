@@ -8,6 +8,7 @@ from app.routers.users import router as users_router
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
     app = FastAPI(
         title="PlusOne API",
         version="0.1.0",
@@ -15,7 +16,8 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=get_settings().cors_origins_list,
+        allow_origins=settings.cors_origins_list,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
