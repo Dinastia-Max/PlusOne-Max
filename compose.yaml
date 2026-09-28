@@ -84,6 +84,26 @@ services:
       MAX_MINI_APP_URL: ${MAX_MINI_APP_URL:-}
     restart: unless-stopped
 
+  notification-worker:
+    build:
+      context: ./backend
+    command:
+      - python
+      - -m
+      - app.notification_worker
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://plusone:plusone@postgres:5432/plusone}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      NOTIFICATION_POLL_INTERVAL_SECONDS: ${NOTIFICATION_POLL_INTERVAL_SECONDS:-10}
+      NOTIFICATION_BATCH_SIZE: ${NOTIFICATION_BATCH_SIZE:-50}
+      NOTIFICATION_MAX_ATTEMPTS: ${NOTIFICATION_MAX_ATTEMPTS:-5}
+      NOTIFICATION_LOCK_TIMEOUT_SECONDS: ${NOTIFICATION_LOCK_TIMEOUT_SECONDS:-300}
+      NOTIFICATION_RETRY_DELAY_SECONDS: ${NOTIFICATION_RETRY_DELAY_SECONDS:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   miniapp:
     build:
       context: ./frontend

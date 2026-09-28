@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from pydantic import ValidationError
 
-from app.models import Field, Slot
+from app.models import Field, NotificationJob, Slot
 from app.routers.slots import create_slot
 from app.schemas import SlotCreate
 
@@ -79,8 +79,16 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.host_id, 42)
         self.assertEqual(response.participants_count, 0)
         self.assertEqual(response.field.id, 1)
-        self.assertEqual(len(session.added), 1)
         self.assertIsInstance(session.added[0], Slot)
+        notifications = [
+            value
+            for value in session.added
+            if isinstance(value, NotificationJob)
+        ]
+        self.assertEqual(
+            {job.notification_type for job in notifications},
+            {"reminder_2h", "game_status_1h"},
+        )
 
     async def test_active_field_is_required(self):
         session = FakeSession(None)
