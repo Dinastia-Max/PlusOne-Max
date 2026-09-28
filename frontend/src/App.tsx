@@ -1,4 +1,15 @@
 import { useState, type ReactNode } from "react";
+import { fetchSlot, fetchSlots, type ApiError, type SlotDetail, type SlotListItem } from "./api";
+import {
+  formatDate,
+  formatDayLabel,
+  formatDayOfMonth,
+  formatFreeSeats,
+  formatMonthShort,
+  formatTimeRange,
+  pluralize,
+} from "./format";
+import { useRequest } from "./useRequest";
 
 type Screen = "onboarding" | "home" | "details" | "create" | "my" | "profile" | "manage";
 type Sheet = "join" | "leave" | "success" | "message" | "cancel" | null;
@@ -20,47 +31,7 @@ type IconName =
   | "team"
   | "warning";
 
-const slots = [
-  {
-    id: 1,
-    day: "Сегодня",
-    date: "24 мая",
-    time: "19:00–20:30",
-    field: "Стадион «Сокол»",
-    address: "ул. Лётчика Бабушкина, 21",
-    players: 7,
-    max: 10,
-    host: "Антон",
-    ball: true,
-    tone: "mint",
-  },
-  {
-    id: 2,
-    day: "Завтра",
-    date: "25 мая",
-    time: "11:00–12:30",
-    field: "Парк «Яуза»",
-    address: "Олонецкий пр-д, 5",
-    players: 9,
-    max: 12,
-    host: "Михаил",
-    ball: false,
-    tone: "sky",
-  },
-  {
-    id: 3,
-    day: "Воскресенье",
-    date: "26 мая",
-    time: "18:30–20:00",
-    field: "Арена «Свиблово»",
-    address: "Тенистый пр-д, 6",
-    players: 5,
-    max: 10,
-    host: "Денис",
-    ball: true,
-    tone: "violet",
-  },
-];
+const FIELD_TONES = ["mint", "sky", "violet"] as const;
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
@@ -213,59 +184,104 @@ function BottomNav({ active, navigate }: { active: Screen; navigate: (screen: Sc
 }
 
 function ProgressRing({ value, max }: { value: number; max: number }) {
+  const share = max > 0 ? Math.min(value / max, 1) : 0;
   return (
-    <div className="progress-ring" style={{ "--progress": `${(value / max) * 360}deg` } as React.CSSProperties}>
+    <div className="progress-ring" style={{ "--progress": `${share * 360}deg` } as React.CSSProperties}>
       <div>{value}</div>
       <span>из {max}</span>
     </div>
   );
 }
 
-function SlotCard({
-  slot,
-  joined,
-  onOpen,
-}: {
-  slot: (typeof slots)[number];
-  joined?: boolean;
-  onOpen: () => void;
-}) {
+function SlotCard({ slot, onOpen }: { slot: SlotListItem; onOpen: () => void }) {
+  const tone = FIELD_TONES[slot.field.id % FIELD_TONES.length];
   return (
-    <div className="slot-card" role="button" tabIndex={0} onClick={onOpen}>
+    <div
+      className="slot-card"
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen();
+        }
+      }}
+    >
       <div className="slot-card__top">
         <div>
           <div className="date-line">
-            <span className="date-line__day">{slot.day}</span>
-            <span>{slot.date}</span>
+            <span className="date-line__day">{formatDayLabel(slot.start_at)}</span>
+            <span>{formatDate(slot.start_at)}</span>
           </div>
-          <div className="slot-card__time">{slot.time}</div>
+          <div className="slot-card__time">{formatTimeRange(slot.start_at, slot.end_at)}</div>
         </div>
-        <ProgressRing value={slot.players + (joined && slot.id === 1 ? 1 : 0)} max={slot.max} />
+        <ProgressRing value={slot.participants_count} max={slot.max_players} />
       </div>
       <div className="field-line">
-        <div className={`field-icon field-icon--${slot.tone}`}>
+        <div className={`field-icon field-icon--${tone}`}>
           <Icon name="location" size={19} />
         </div>
         <div>
-          <div className="field-line__name">{slot.field}</div>
-          <div className="field-line__address">{slot.address}</div>
+          <div className="field-line__name">{slot.field.name}</div>
+          <div className="field-line__address">{slot.field.address}</div>
         </div>
       </div>
       <div className="slot-card__footer">
-        <div className="host">
-          <Avatar name={slot.host} tone={slot.tone} />
-          <span>Хост · {slot.host}</span>
-        </div>
+        <div className="seats">{formatFreeSeats(slot.max_players - slot.participants_count)}</div>
         <div className="tags">
-          {slot.ball && (
+          {slot.has_ball && (
             <div className="tag">
               <Icon name="ball" size={15} />
               Мяч будет
             </div>
           )}
-          {joined && slot.id === 1 && <div className="tag tag--success">Вы в игре</div>}
         </div>
       </div>
+    </div>
+  );
+}
+
+function errorMessage(error: ApiError): { title: string; copy: string } {
+  if (error.kind === "network") {
+    return { title: "Сервер недоступен", copy: "Проверьте подключение к интернету и попробуйте ещё раз." };
+  }
+  if (error.kind === "not_found") {
+    return { title: "Игра не найдена", copy: "Возможно, её отменили или удалили." };
+  }
+  return { title: "Не удалось загрузить данные", copy: `${error.message}. Попробуйте ещё раз чуть позже.` };
+}
+
+function ErrorState({ error, retry }: { error: ApiError; retry: () => void }) {
+  const { title, copy } = errorMessage(error);
+  return (
+    <div className="state-card" role="alert">
+      <div className="state-card__icon state-card__icon--danger"><Icon name="warning" size={25} /></div>
+      <div className="state-card__title">{title}</div>
+      <div className="state-card__copy">{copy}</div>
+      <Button kind="secondary" onClick={retry}>Повторить</Button>
+    </div>
+  );
+}
+
+function EmptyState({ refresh }: { refresh: () => void }) {
+  return (
+    <div className="state-card">
+      <div className="state-card__icon"><Icon name="ball" size={25} /></div>
+      <div className="state-card__title">Пока нет игр</div>
+      <div className="state-card__copy">На ближайшую неделю игр не запланировано. Загляните позже или обновите список.</div>
+      <Button kind="secondary" onClick={refresh}>Обновить</Button>
+    </div>
+  );
+}
+
+function SlotCardSkeleton() {
+  return (
+    <div className="slot-card slot-card--skeleton" aria-hidden="true">
+      <div className="skeleton skeleton--line" style={{ width: "35%" }} />
+      <div className="skeleton skeleton--title" style={{ width: "55%" }} />
+      <div className="skeleton skeleton--line" style={{ width: "80%", marginTop: 22 }} />
+      <div className="skeleton skeleton--line" style={{ width: "50%" }} />
     </div>
   );
 }
@@ -323,32 +339,36 @@ function Onboarding({ start }: { start: () => void }) {
   );
 }
 
-function Home({ open, create, joined }: { open: () => void; create: () => void; joined: boolean }) {
+function Home({ open, create }: { open: (id: number) => void; create: () => void }) {
+  const [state, retry] = useRequest(fetchSlots, []);
   return (
     <div className="screen">
       <div className="home-header">
         <div>
           <div className="eyebrow eyebrow--blue">ИГРЫ РЯДОМ</div>
-          <div className="page-title">Северное Медведково</div>
-          <div className="location-caption"><Icon name="location" size={15} /> Москва</div>
+          <div className="page-title">Найдите игру</div>
         </div>
-        <Avatar name="Алексей Морозов" tone="blue" />
-      </div>
-      <div className="date-strip">
-        {["24", "25", "26", "27", "28"].map((date, index) => (
-          <div className={`date-pill${index === 0 ? " is-active" : ""}`} key={date}>
-            <span>{["Пт", "Сб", "Вс", "Пн", "Вт"][index]}</span>
-            <strong>{date}</strong>
-          </div>
-        ))}
       </div>
       <div className="section-heading">
         <div>Ближайшие игры</div>
-        <span>{slots.length} игры</span>
+        {state.status === "success" && state.data.length > 0 && (
+          <span>{state.data.length} {pluralize(state.data.length, ["игра", "игры", "игр"])}</span>
+        )}
       </div>
-      <div className="cards">
-        {slots.map((slot) => <SlotCard key={slot.id} slot={slot} joined={joined} onOpen={slot.id === 1 ? open : open} />)}
-      </div>
+      {state.status === "loading" && (
+        <div className="cards" role="status" aria-busy="true" aria-label="Загрузка игр">
+          <SlotCardSkeleton />
+          <SlotCardSkeleton />
+          <SlotCardSkeleton />
+        </div>
+      )}
+      {state.status === "error" && <ErrorState error={state.error} retry={retry} />}
+      {state.status === "success" && state.data.length === 0 && <EmptyState refresh={retry} />}
+      {state.status === "success" && state.data.length > 0 && (
+        <div className="cards">
+          {state.data.map((slot) => <SlotCard key={slot.id} slot={slot} onOpen={() => open(slot.id)} />)}
+        </div>
+      )}
       <div className="fab" role="button" tabIndex={0} onClick={create}>
         <Icon name="plus" size={22} />
         <span>Создать игру</span>
@@ -357,57 +377,86 @@ function Home({ open, create, joined }: { open: () => void; create: () => void; 
   );
 }
 
-function Details({
-  back,
-  joined,
-  join,
-  leave,
-}: {
-  back: () => void;
-  joined: boolean;
-  join: () => void;
-  leave: () => void;
-}) {
+function slotStatus(slot: SlotDetail): { label: string; open: boolean } {
+  if (new Date(slot.start_at).getTime() <= Date.now()) return { label: "Игра уже началась", open: false };
+  if (slot.participants_count >= slot.max_players) return { label: "Мест нет", open: false };
+  return { label: "Набор открыт", open: true };
+}
+
+function SlotContent({ slot }: { slot: SlotDetail }) {
+  const status = slotStatus(slot);
+  const freeSeats = slot.max_players - slot.participants_count;
   return (
-    <div className="screen detail-screen">
-      <TopBar title="Игра" back={back} action={<div className="topbar-action">•••</div>} />
+    <>
       <div className="detail-hero">
-        <div className="date-badge"><span>МАЙ</span><strong>24</strong></div>
+        <div className="date-badge"><span>{formatMonthShort(slot.start_at)}</span><strong>{formatDayOfMonth(slot.start_at)}</strong></div>
         <div>
-          <div className="detail-hero__day">Сегодня</div>
-          <div className="detail-hero__time">19:00–20:30</div>
-          <div className="status"><span /> Набор открыт</div>
+          <div className="detail-hero__day">{formatDayLabel(slot.start_at)}, {formatDate(slot.start_at)}</div>
+          <div className="detail-hero__time">{formatTimeRange(slot.start_at, slot.end_at)}</div>
+          <div className={`status${status.open ? "" : " status--closed"}`}><span /> {status.label}</div>
         </div>
-        <ProgressRing value={joined ? 8 : 7} max={10} />
+        <ProgressRing value={slot.participants_count} max={slot.max_players} />
       </div>
       <div className="detail-content">
         <div className="info-card">
-          <InfoRow icon="location" label="ПОЛЕ" value="Стадион «Сокол»" sub="ул. Лётчика Бабушкина, 21" />
+          <InfoRow icon="location" label="ПОЛЕ" value={slot.field.name} sub={slot.field.address} />
           <div className="divider" />
-          <InfoRow icon="team" label="ИГРА" value="Минимум 6 · максимум 10" sub={`${joined ? 2 : 3} свободных места`} />
+          <InfoRow
+            icon="team"
+            label="УЧАСТНИКИ"
+            value={`Записалось ${slot.participants_count} из ${slot.max_players}`}
+            sub={`${formatFreeSeats(freeSeats)} · минимум ${slot.min_players}`}
+          />
           <div className="divider" />
-          <InfoRow icon="ball" label="ИНВЕНТАРЬ" value="Мяч будет" sub="Берёт организатор" />
-        </div>
-        <div className="notice">
-          <div className="notice__icon"><Icon name="warning" size={19} /></div>
-          <div><strong>Поле может быть занято</strong><span>Здесь недавно началась другая игра. Проверьте поле перед началом.</span></div>
-        </div>
-        <div className="section-heading"><div>Организатор</div></div>
-        <div className="host-card">
-          <Avatar name="Антон Смирнов" tone="mint" />
-          <div className="host-card__name"><strong>Антон Смирнов</strong><span>Хост · 12 игр</span></div>
-          <div className="circle-action"><Icon name="message" size={19} /></div>
-        </div>
-        <div className="section-heading"><div>Участники</div><span>{joined ? 8 : 7} из 10</span></div>
-        <div className="participant-stack">
-          {["АС", "МК", "ДВ", "РП"].map((name, index) => <Avatar key={name} name={name} tone={["mint", "sky", "violet", "orange"][index]} />)}
-          <div className="avatar avatar--more">+{joined ? 4 : 3}</div>
+          <InfoRow icon="ball" label="ИНВЕНТАРЬ" value={slot.has_ball ? "Мяч будет" : "Мяча пока нет"} />
         </div>
       </div>
-      <div className="sticky-action">
-        {joined ? <Button kind="secondary" onClick={leave}>Отказаться от участия</Button> : <Button onClick={join}>Записаться на игру</Button>}
-        <div className="sticky-action__caption">{joined ? "Ваше место сразу вернётся в набор" : "Осталось 3 места"}</div>
+    </>
+  );
+}
+
+function DetailsSkeleton() {
+  return (
+    <div role="status" aria-busy="true" aria-label="Загрузка игры">
+      <div className="detail-hero" aria-hidden="true">
+        <div className="skeleton" style={{ width: 57, height: 64, borderRadius: 14 }} />
+        <div>
+          <div className="skeleton skeleton--line" style={{ width: 90 }} />
+          <div className="skeleton skeleton--title" style={{ width: 130 }} />
+        </div>
+        <div className="skeleton" style={{ width: 54, height: 54, borderRadius: 999 }} />
       </div>
+      <div className="detail-content" aria-hidden="true">
+        <div className="info-card">
+          <div className="info-row"><div className="skeleton" style={{ width: "100%", height: 38 }} /></div>
+          <div className="info-row"><div className="skeleton" style={{ width: "100%", height: 38 }} /></div>
+          <div className="info-row"><div className="skeleton" style={{ width: "100%", height: 38 }} /></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Details({ slotId, back }: { slotId: number; back: () => void }) {
+  const [state, retry] = useRequest((signal) => fetchSlot(slotId, signal), [slotId]);
+  return (
+    <div className="screen detail-screen">
+      <TopBar title="Игра" back={back} />
+      {state.status === "loading" && <DetailsSkeleton />}
+      {state.status === "error" && (
+        <div className="detail-content">
+          <ErrorState error={state.error} retry={retry} />
+        </div>
+      )}
+      {state.status === "success" && (
+        <>
+          <SlotContent slot={state.data} />
+          <div className="sticky-action">
+            <Button disabled>Записаться на игру</Button>
+            <div className="sticky-action__caption">Запись на игру пока недоступна</div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -465,7 +514,7 @@ function CreateGame({ back, publish }: { back: () => void; publish: () => void }
   );
 }
 
-function MyGames({ open, manage, joined }: { open: () => void; manage: () => void; joined: boolean }) {
+function MyGames({ manage }: { manage: () => void }) {
   return (
     <div className="screen">
       <TopBar title="Мои игры" />
@@ -476,7 +525,13 @@ function MyGames({ open, manage, joined }: { open: () => void; manage: () => voi
       <div className="section-heading"><div>Ближайшие</div></div>
       <div className="cards">
         <div className="role-label"><span className="role-dot" /> ВЫ УЧАСТВУЕТЕ</div>
-        <SlotCard slot={slots[0]} joined={joined} onOpen={open} />
+        <div className="slot-card host-slot">
+          <div className="slot-card__top">
+            <div><div className="date-line"><span className="date-line__day">Сегодня</span><span>24 мая</span></div><div className="slot-card__time">19:00–20:30</div></div>
+            <ProgressRing value={7} max={10} />
+          </div>
+          <div className="field-line"><div className="field-icon field-icon--mint"><Icon name="location" size={19} /></div><div><div className="field-line__name">Стадион «Сокол»</div><div className="field-line__address">ул. Лётчика Бабушкина, 21</div></div></div>
+        </div>
         <div className="role-label role-label--host"><span className="role-dot" /> ВЫ ОРГАНИЗАТОР</div>
         <div className="slot-card host-slot" role="button" tabIndex={0} onClick={manage}>
           <div className="slot-card__top">
@@ -629,21 +684,16 @@ function Modal({ type, close, confirm }: { type: Exclude<Sheet, null>; close: ()
 export default function App() {
   const [screen, setScreen] = useState<Screen>("onboarding");
   const [sheet, setSheet] = useState<Sheet>(null);
-  const [joined, setJoined] = useState(false);
+  const [selectedSlotId, setSelectedSlotId] = useState<number | null>(null);
 
   const navigate = (next: Screen) => {
     setScreen(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const confirmSheet = () => {
-    if (sheet === "join") {
-      setJoined(true);
-      setSheet("success");
-      return;
-    }
-    if (sheet === "leave") setJoined(false);
-    setSheet(null);
+  const openSlot = (id: number) => {
+    setSelectedSlotId(id);
+    navigate("details");
   };
 
   const hasNav = ["home", "my", "profile"].includes(screen);
@@ -652,14 +702,14 @@ export default function App() {
     <div className="app-shell">
       <div className="phone">
         {screen === "onboarding" && <Onboarding start={() => navigate("home")} />}
-        {screen === "home" && <Home open={() => navigate("details")} create={() => navigate("create")} joined={joined} />}
-        {screen === "details" && <Details back={() => navigate("home")} joined={joined} join={() => setSheet("join")} leave={() => setSheet("leave")} />}
+        {screen === "home" && <Home open={openSlot} create={() => navigate("create")} />}
+        {screen === "details" && selectedSlotId !== null && <Details slotId={selectedSlotId} back={() => navigate("home")} />}
         {screen === "create" && <CreateGame back={() => navigate("home")} publish={() => navigate("my")} />}
-        {screen === "my" && <MyGames open={() => navigate("details")} manage={() => navigate("manage")} joined={joined} />}
+        {screen === "my" && <MyGames manage={() => navigate("manage")} />}
         {screen === "manage" && <Manage back={() => navigate("my")} message={() => setSheet("message")} cancel={() => setSheet("cancel")} />}
         {screen === "profile" && <Profile />}
         {hasNav && <BottomNav active={screen} navigate={navigate} />}
-        {sheet && <Modal type={sheet} close={() => setSheet(null)} confirm={confirmSheet} />}
+        {sheet && <Modal type={sheet} close={() => setSheet(null)} confirm={() => setSheet(null)} />}
       </div>
     </div>
   );

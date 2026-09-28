@@ -1,10 +1,14 @@
 import { defineConfig, type HtmlTagDescriptor, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import fs from 'node:fs'
 import path from 'node:path'
 
-import siteConfiguration from './.figma/make/site.json'
-
+// .figma/make/site.json exists only inside Figma Make; local and server builds fall back to defaults.
+const siteConfigurationPath = path.resolve(__dirname, './.figma/make/site.json')
+const siteConfiguration: FigmaSiteConfiguration = fs.existsSync(siteConfigurationPath)
+  ? JSON.parse(fs.readFileSync(siteConfigurationPath, 'utf-8'))
+  : { title: 'PlusOne', language: 'ru' }
 
 // Vite config — https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
