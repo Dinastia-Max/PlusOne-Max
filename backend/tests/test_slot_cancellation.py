@@ -110,7 +110,7 @@ class CancelSlotHeaderTest(unittest.TestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
         )
 
 

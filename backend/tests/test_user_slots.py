@@ -166,10 +166,10 @@ class CurrentUserSlotsHeaderTest(unittest.TestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
         )
 
-    def test_user_id_must_be_positive(self):
+    def test_legacy_user_id_header_is_not_accepted(self):
         response = TestClient(app).get(
             "/users/me/slots",
             headers={"X-User-Id": "0"},
@@ -177,7 +177,7 @@ class CurrentUserSlotsHeaderTest(unittest.TestCase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
         )
 
 

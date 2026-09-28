@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://plusone:plusone@localhost:5432/plusone"
     max_bot_token: str = ""
     max_mini_app_url: str = ""
+    max_auth_max_age_seconds: int = 3600
 
     model_config = SettingsConfigDict(
         env_file=".env",
