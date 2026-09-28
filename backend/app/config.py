@@ -8,13 +8,15 @@ class Settings(BaseSettings):
     max_bot_token: str = ""
     max_mini_app_url: str = ""
     max_auth_max_age_seconds: int = 3600
-    cors_allowed_origins: str = "http://localhost:8080"
+    cors_origins: str = (
+        "http://localhost:8080,http://localhost:8443,http://localhost:5173"
+    )
 
     @property
-    def cors_origins(self) -> list[str]:
+    def cors_origins_list(self) -> list[str]:
         return [
             origin.strip().rstrip("/")
-            for origin in self.cors_allowed_origins.split(",")
+            for origin in self.cors_origins.split(",")
             if origin.strip()
         ]
 
