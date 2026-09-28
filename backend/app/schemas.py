@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class FieldResponse(BaseModel):
@@ -30,6 +30,23 @@ class UserSlotListItem(SlotListItem):
 class SlotDetail(SlotListItem):
     min_players: int
     host_id: int
+
+
+class SlotCreate(BaseModel):
+    field_id: int = Field(gt=0)
+    start_at: AwareDatetime
+    end_at: AwareDatetime
+    min_players: int = Field(gt=0)
+    max_players: int = Field(gt=0)
+    has_ball: bool = False
+
+    @model_validator(mode="after")
+    def validate_limits(self) -> Self:
+        if self.end_at <= self.start_at:
+            raise ValueError("end_at must be later than start_at")
+        if self.max_players < self.min_players:
+            raise ValueError("max_players must be greater than or equal to min_players")
+        return self
 
 
 class ParticipantResponse(BaseModel):
