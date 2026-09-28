@@ -43,7 +43,7 @@ services:
     ports:
       - "${MINI_APP_PORT:-8080}:80"
     volumes:
-      - ./miniapp:/usr/share/nginx/html:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
 
 volumes:
   postgres_data:
