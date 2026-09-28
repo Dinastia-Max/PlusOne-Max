@@ -85,11 +85,14 @@ services:
     restart: unless-stopped
 
   miniapp:
-    image: nginx:1.27-alpine
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
     ports:
       - "${MINI_APP_PORT:-8080}:80"
-    volumes:
-      - ./frontend/dist:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
