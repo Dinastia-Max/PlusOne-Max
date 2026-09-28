@@ -70,6 +70,7 @@ class CurrentUserSlotsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result[0].id, row[0].id)
         self.assertEqual(result[0].participants_count, 7)
         self.assertEqual(result[0].field.id, row[1].id)
+        self.assertEqual(result[0].role, "host")
 
     async def test_empty_result_returns_empty_list(self):
         session = FakeSession([])
@@ -152,6 +153,10 @@ class CurrentUserSlotsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [slot.participants_count for slot in result],
             [2, 2],
+        )
+        self.assertEqual(
+            [slot.role for slot in result],
+            ["host", "participant"],
         )
 
 

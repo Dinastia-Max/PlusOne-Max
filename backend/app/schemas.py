@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -20,6 +21,10 @@ class SlotListItem(BaseModel):
     participants_count: int
     has_ball: bool
     field: FieldResponse
+
+
+class UserSlotListItem(SlotListItem):
+    role: Literal["host", "participant"]
 
 
 class SlotDetail(SlotListItem):
