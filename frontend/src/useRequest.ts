@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError } from "./api";
 
 export type RequestState<T> =
@@ -9,13 +9,15 @@ export type RequestState<T> =
 export function useRequest<T>(
   load: (signal: AbortSignal) => Promise<T>,
   deps: readonly unknown[],
-): [RequestState<T>, () => void] {
+): [RequestState<T>, (silent?: boolean) => void] {
   const [state, setState] = useState<RequestState<T>>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const silentRef = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
-    setState({ status: "loading" });
+    if (!silentRef.current) setState({ status: "loading" });
+    silentRef.current = false;
 
     load(controller.signal).then(
       (data) => {
@@ -34,6 +36,10 @@ export function useRequest<T>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, attempt]);
 
-  const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  return [state, retry];
+  const reload = useCallback((silent = false) => {
+    silentRef.current = silent === true;
+    setAttempt((value) => value + 1);
+  }, []);
+
+  return [state, reload];
 }
