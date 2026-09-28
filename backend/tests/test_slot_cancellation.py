@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models import Slot
 from app.routers.slots import cancel_slot
+from test_support import ConfiguredAuthTestCase
 
 
 class FakeResult:
@@ -104,7 +105,7 @@ class CancelSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(slot.canceled_at, canceled_at)
 
 
-class CancelSlotHeaderTest(unittest.TestCase):
+class CancelSlotHeaderTest(ConfiguredAuthTestCase):
     def test_endpoint_requires_user_header(self):
         response = TestClient(app).delete("/slots/1")
 

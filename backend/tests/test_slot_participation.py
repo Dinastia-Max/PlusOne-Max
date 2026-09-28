@@ -10,6 +10,7 @@ from app.database import Base
 from app.main import app
 from app.models import Field, Participation, Slot
 from app.routers.slots import join_slot, leave_slot, overlapping_slots_query
+from test_support import ConfiguredAuthTestCase
 
 
 class FakeResult:
@@ -270,7 +271,7 @@ class OverlappingSlotsQueryTest(unittest.TestCase):
         self.assertEqual(result, [])
 
 
-class CurrentUserHeaderTest(unittest.TestCase):
+class CurrentUserHeaderTest(ConfiguredAuthTestCase):
     def test_join_requires_user_header(self):
         response = TestClient(app).post("/slots/1/join")
 

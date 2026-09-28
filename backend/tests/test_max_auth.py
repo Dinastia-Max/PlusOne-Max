@@ -6,6 +6,7 @@ import unittest
 from urllib.parse import quote
 
 from fastapi import HTTPException, status
+from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.dependencies import (
@@ -13,6 +14,7 @@ from app.dependencies import (
     get_current_user_id,
     validate_max_init_data,
 )
+from app.main import app
 
 
 BOT_TOKEN = "test-bot-token"
@@ -152,6 +154,28 @@ class CurrentUserDependencyTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             context.exception.status_code,
             status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+
+class CorsTest(unittest.TestCase):
+    def test_allows_max_auth_header_from_miniapp(self):
+        response = TestClient(app).options(
+            "/users/me/slots",
+            headers={
+                "Origin": "http://localhost:8080",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "X-Max-Init-Data",
+            },
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.headers["access-control-allow-origin"],
+            "http://localhost:8080",
+        )
+        self.assertIn(
+            "x-max-init-data",
+            response.headers["access-control-allow-headers"].lower(),
         )
 
 

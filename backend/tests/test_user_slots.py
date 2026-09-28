@@ -10,6 +10,7 @@ from app.database import Base
 from app.main import app
 from app.models import Field, Participation, Slot
 from app.routers.users import get_current_user_slots
+from test_support import ConfiguredAuthTestCase
 
 
 class FakeResult:
@@ -160,7 +161,7 @@ class CurrentUserSlotsTest(unittest.IsolatedAsyncioTestCase):
         )
 
 
-class CurrentUserSlotsHeaderTest(unittest.TestCase):
+class CurrentUserSlotsHeaderTest(ConfiguredAuthTestCase):
     def test_endpoint_requires_user_header(self):
         response = TestClient(app).get("/users/me/slots")
 
