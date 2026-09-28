@@ -1,0 +1,142 @@
+import unittest
+from datetime import datetime, timedelta, timezone
+
+from fastapi import HTTPException, status
+from pydantic import ValidationError
+
+from app.models import Field, Slot
+from app.routers.slots import create_slot
+from app.schemas import SlotCreate
+
+
+class FakeResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalar_one_or_none(self):
+        return self.value
+
+
+class TransactionContext:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+
+class FakeSession:
+    def __init__(self, field):
+        self.field = field
+        self.added = []
+
+    def begin(self):
+        return TransactionContext()
+
+    async def execute(self, statement):
+        return FakeResult(self.field)
+
+    def add(self, value):
+        self.added.append(value)
+
+    async def flush(self):
+        self.added[0].id = 100
+
+
+def valid_slot_data(**overrides) -> SlotCreate:
+    start_at = datetime.now(timezone.utc) + timedelta(days=1)
+    values = {
+        "field_id": 1,
+        "start_at": start_at,
+        "end_at": start_at + timedelta(hours=2),
+        "min_players": 6,
+        "max_players": 12,
+        "has_ball": True,
+    }
+    values.update(overrides)
+    return SlotCreate(**values)
+
+
+class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
+    async def test_user_can_create_slot(self):
+        field = Field(
+            id=1,
+            name="Test field",
+            address="Test address",
+            district="Test district",
+            is_active=True,
+        )
+        session = FakeSession(field)
+        slot_data = valid_slot_data()
+
+        response = await create_slot(
+            slot_data_in=slot_data,
+            user_id=42,
+            session=session,
+        )
+
+        self.assertEqual(response.id, 100)
+        self.assertEqual(response.host_id, 42)
+        self.assertEqual(response.participants_count, 0)
+        self.assertEqual(response.field.id, 1)
+        self.assertEqual(len(session.added), 1)
+        self.assertIsInstance(session.added[0], Slot)
+
+    async def test_active_field_is_required(self):
+        session = FakeSession(None)
+
+        with self.assertRaises(HTTPException) as context:
+            await create_slot(
+                slot_data_in=valid_slot_data(),
+                user_id=42,
+                session=session,
+            )
+
+        self.assertEqual(context.exception.status_code, status.HTTP_404_NOT_FOUND)
+
+    async def test_slot_must_start_in_future(self):
+        start_at = datetime.now(timezone.utc) - timedelta(hours=2)
+        slot_data = valid_slot_data(
+            start_at=start_at,
+            end_at=start_at + timedelta(hours=1),
+        )
+
+        with self.assertRaises(HTTPException) as context:
+            await create_slot(
+                slot_data_in=slot_data,
+                user_id=42,
+                session=FakeSession(None),
+            )
+
+        self.assertEqual(
+            context.exception.status_code,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+
+
+class SlotCreateSchemaTest(unittest.TestCase):
+    def test_end_must_be_later_than_start(self):
+        start_at = datetime.now(timezone.utc) + timedelta(days=1)
+
+        with self.assertRaises(ValidationError):
+            valid_slot_data(start_at=start_at, end_at=start_at)
+
+    def test_player_limits_must_be_valid(self):
+        with self.assertRaises(ValidationError):
+            valid_slot_data(min_players=12, max_players=6)
+
+        with self.assertRaises(ValidationError):
+            valid_slot_data(min_players=0)
+
+    def test_time_zone_is_required(self):
+        start_at = datetime.now() + timedelta(days=1)
+
+        with self.assertRaises(ValidationError):
+            valid_slot_data(
+                start_at=start_at,
+                end_at=start_at + timedelta(hours=2),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
