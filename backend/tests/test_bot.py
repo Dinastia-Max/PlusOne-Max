@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock, Mock
 
-from app.bot import MaxBot
+from app.bot import BOT_COMMANDS, MaxBot
 
 
 class WelcomeMessageTest(unittest.IsolatedAsyncioTestCase):
@@ -18,6 +18,20 @@ class WelcomeMessageTest(unittest.IsolatedAsyncioTestCase):
         button = body["attachments"][0]["payload"]["buttons"][0][0]
         self.assertEqual(button["type"], "open_app")
         self.assertEqual(button["web_app"], "plusone_bot")
+        response.raise_for_status.assert_called_once_with()
+
+    async def test_registers_start_command(self):
+        response = Mock()
+        bot = MaxBot.__new__(MaxBot)
+        bot.client = Mock()
+        bot.client.patch = AsyncMock(return_value=response)
+
+        await bot.set_commands()
+
+        bot.client.patch.assert_awaited_once_with(
+            "/me/commands",
+            json={"commands": BOT_COMMANDS},
+        )
         response.raise_for_status.assert_called_once_with()
 
 
