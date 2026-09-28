@@ -23,9 +23,9 @@ logger = logging.getLogger("plusone.bot")
 
 
 class MaxBot:
-    def __init__(self, token: str, mini_app_url: str = "") -> None:
+    def __init__(self, token: str) -> None:
         timeout = httpx.Timeout(95.0, connect=15.0)
-        self.mini_app_url = mini_app_url.strip()
+        self.web_app = ""
         self.client = httpx.AsyncClient(
             base_url=API_URL,
             headers={"Authorization": token},
@@ -55,7 +55,7 @@ class MaxBot:
 
     async def send_welcome(self, user_id: int) -> None:
         body: dict[str, Any] = {"text": WELCOME_TEXT}
-        if self.mini_app_url:
+        if self.web_app:
             body["attachments"] = [
                 {
                     "type": "inline_keyboard",
@@ -65,7 +65,7 @@ class MaxBot:
                                 {
                                     "type": "open_app",
                                     "text": "Открыть приложение",
-                                    "web_app": self.mini_app_url,
+                                    "web_app": self.web_app,
                                 }
                             ]
                         ]
@@ -128,10 +128,12 @@ async def run() -> None:
     if not token:
         raise RuntimeError("MAX_BOT_TOKEN is not configured")
 
-    bot = MaxBot(token, settings.max_mini_app_url)
+    bot = MaxBot(token)
     marker: int | None = None
     try:
         me = await bot.get_me()
+        if settings.max_mini_app_url:
+            bot.web_app = me.get("username") or ""
         logger.info(
             "Connected to MAX as @%s (id=%s)",
             me.get("username") or "unknown",
