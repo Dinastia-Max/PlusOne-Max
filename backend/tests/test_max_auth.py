@@ -12,6 +12,7 @@ from app.config import Settings
 from app.dependencies import (
     MaxInitDataError,
     get_current_user_id,
+    get_optional_current_user_id,
     validate_max_init_data,
 )
 from app.main import app
@@ -155,6 +156,30 @@ class CurrentUserDependencyTest(unittest.IsolatedAsyncioTestCase):
             context.exception.status_code,
             status.HTTP_503_SERVICE_UNAVAILABLE,
         )
+
+    async def test_optional_user_allows_missing_data(self):
+        user_id = await get_optional_current_user_id(
+            settings=self.settings(),
+            init_data=None,
+        )
+
+        self.assertIsNone(user_id)
+
+    async def test_optional_user_validates_supplied_data(self):
+        user_id = await get_optional_current_user_id(
+            settings=self.settings(),
+            init_data=signed_init_data(),
+        )
+
+        self.assertEqual(user_id, USER_ID)
+
+        with self.assertRaises(HTTPException) as context:
+            await get_optional_current_user_id(
+                settings=self.settings(),
+                init_data="invalid",
+            )
+
+        self.assertEqual(context.exception.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 class CorsTest(unittest.TestCase):

@@ -139,7 +139,24 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         detail_response = await self.client.get(f"/slots/{slot_id}")
         self.assertEqual(detail_response.status_code, 200)
-        self.assertEqual(detail_response.json()["host_id"], 101)
+        self.assertFalse(detail_response.json()["is_host"])
+        self.assertNotIn("host_id", detail_response.json())
+
+        host_detail_response = await self.client.get(
+            f"/slots/{slot_id}",
+            headers=self.headers(101),
+        )
+        self.assertEqual(host_detail_response.status_code, 200)
+        self.assertTrue(host_detail_response.json()["is_host"])
+        self.assertNotIn("host_id", host_detail_response.json())
+
+        outsider_detail_response = await self.client.get(
+            f"/slots/{slot_id}",
+            headers=self.headers(202),
+        )
+        self.assertEqual(outsider_detail_response.status_code, 200)
+        self.assertFalse(outsider_detail_response.json()["is_host"])
+        self.assertNotIn("host_id", outsider_detail_response.json())
 
         join_response = await self.client.post(
             f"/slots/{slot_id}/join",
@@ -181,13 +198,13 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(slot["participants_count"], 1)
 
         participants = await self.client.get(
-            f"/slots/{slot['id']}/participants"
+            f"/slots/{slot['id']}/participants",
+            headers=self.headers(101),
         )
         self.assertEqual(participants.status_code, 200)
-        self.assertEqual(
-            [participant["user_id"] for participant in participants.json()],
-            [101],
-        )
+        self.assertEqual(len(participants.json()), 1)
+        self.assertTrue(participants.json()[0]["is_current_user"])
+        self.assertNotIn("user_id", participants.json()[0])
 
         duplicate = await self.client.post(
             f"/slots/{slot['id']}/join",
@@ -225,12 +242,69 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json()["participants_count"], 1)
         participants = await self.client.get(
-            f"/slots/{slot['id']}/participants"
+            f"/slots/{slot['id']}/participants",
+            headers=self.headers(101),
         )
+        self.assertEqual(participants.status_code, 200)
+        self.assertEqual(len(participants.json()), 1)
+        self.assertTrue(participants.json()[0]["is_current_user"])
+        self.assertNotIn("user_id", participants.json()[0])
+
+    async def test_participant_list_is_private_and_hides_max_ids(self):
+        slot_id = await self.create_slot(host_id=101)
+
+        unauthorized = await self.client.get(f"/slots/{slot_id}/participants")
+        self.assertEqual(unauthorized.status_code, 401)
+
+        outsider = await self.client.get(
+            f"/slots/{slot_id}/participants",
+            headers=self.headers(303),
+        )
+        self.assertEqual(outsider.status_code, 403)
+
+        joined = await self.client.post(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(202),
+        )
+        self.assertEqual(joined.status_code, 204)
+
+        host_view = await self.client.get(
+            f"/slots/{slot_id}/participants",
+            headers=self.headers(101),
+        )
+        self.assertEqual(host_view.status_code, 200)
+        self.assertEqual(len(host_view.json()), 2)
         self.assertEqual(
-            [participant["user_id"] for participant in participants.json()],
-            [101],
+            [participant["is_current_user"] for participant in host_view.json()],
+            [True, False],
         )
+        self.assertTrue(
+            all("user_id" not in participant for participant in host_view.json())
+        )
+
+        participant_view = await self.client.get(
+            f"/slots/{slot_id}/participants",
+            headers=self.headers(202),
+        )
+        self.assertEqual(participant_view.status_code, 200)
+        self.assertEqual(
+            [participant["is_current_user"] for participant in participant_view.json()],
+            [False, True],
+        )
+        self.assertTrue(
+            all("user_id" not in participant for participant in participant_view.json())
+        )
+
+        left = await self.client.delete(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(202),
+        )
+        self.assertEqual(left.status_code, 204)
+        former_participant = await self.client.get(
+            f"/slots/{slot_id}/participants",
+            headers=self.headers(202),
+        )
+        self.assertEqual(former_participant.status_code, 403)
 
     async def test_host_cannot_create_overlapping_slot(self):
         start_at = datetime.now(timezone.utc) + timedelta(days=2)
@@ -423,7 +497,10 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(sorted(response.status_code for response in responses), [204, 409])
 
-        participants = await self.client.get(f"/slots/{slot_id}/participants")
+        participants = await self.client.get(
+            f"/slots/{slot_id}/participants",
+            headers=self.headers(101),
+        )
         self.assertEqual(participants.status_code, 200)
         self.assertEqual(len(participants.json()), 2)
 
