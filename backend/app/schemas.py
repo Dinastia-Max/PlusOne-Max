@@ -42,6 +42,7 @@ class SlotCreate(BaseModel):
     has_ball: bool = False
     host_contact_type: Literal["max", "phone", "none"] = "max"
     host_phone: str | None = Field(default=None, max_length=32)
+    host_participates: bool = True
 
     @model_validator(mode="after")
     def validate_limits(self) -> Self:

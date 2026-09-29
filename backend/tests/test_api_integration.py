@@ -100,6 +100,7 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         *,
         start_at: datetime | None = None,
         max_players: int = 10,
+        host_participates: bool = True,
     ) -> dict:
         start_at = start_at or datetime.now(timezone.utc) + timedelta(days=1)
         return {
@@ -109,6 +110,7 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
             "min_players": 1,
             "max_players": max_players,
             "has_ball": True,
+            "host_participates": host_participates,
         }
 
     async def create_slot(
@@ -116,11 +118,15 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         *,
         host_id: int = 101,
         max_players: int = 10,
+        host_participates: bool = True,
     ) -> int:
         response = await self.client.post(
             "/slots",
             headers=self.headers(host_id),
-            json=self.slot_payload(max_players=max_players),
+            json=self.slot_payload(
+                max_players=max_players,
+                host_participates=host_participates,
+            ),
         )
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()["id"]
@@ -165,6 +171,62 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         hidden_response = await self.client.get(f"/slots/{slot_id}")
         self.assertEqual(hidden_response.status_code, 404)
 
+    async def test_host_participation_choice(self):
+        participating_response = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json=self.slot_payload(host_participates=True),
+        )
+        self.assertEqual(participating_response.status_code, 201)
+        participating_slot = participating_response.json()
+        self.assertEqual(participating_slot["participants_count"], 1)
+
+        participants = await self.client.get(
+            f"/slots/{participating_slot['id']}/participants"
+        )
+        self.assertEqual(participants.status_code, 200)
+        self.assertEqual(
+            [participant["user_id"] for participant in participants.json()],
+            [101],
+        )
+
+        duplicate = await self.client.post(
+            f"/slots/{participating_slot['id']}/join",
+            headers=self.headers(101),
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(
+            duplicate.json()["detail"],
+            "User has already joined this slot",
+        )
+
+        my_games = await self.client.get(
+            "/users/me/slots",
+            headers=self.headers(101),
+        )
+        self.assertEqual(my_games.status_code, 200)
+        participating_game = next(
+            game for game in my_games.json()
+            if game["id"] == participating_slot["id"]
+        )
+        self.assertEqual(participating_game["role"], "host")
+        self.assertEqual(participating_game["participants_count"], 1)
+
+        organizing_response = await self.client.post(
+            "/slots",
+            headers=self.headers(202),
+            json=self.slot_payload(host_participates=False),
+        )
+        self.assertEqual(organizing_response.status_code, 201)
+        organizing_slot = organizing_response.json()
+        self.assertEqual(organizing_slot["participants_count"], 0)
+
+        participants = await self.client.get(
+            f"/slots/{organizing_slot['id']}/participants"
+        )
+        self.assertEqual(participants.status_code, 200)
+        self.assertEqual(participants.json(), [])
+
     async def test_api_errors(self):
         unauthorized = await self.client.post(
             "/slots",
@@ -178,7 +240,10 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(missing.status_code, 404)
 
-        slot_id = await self.create_slot(max_players=1)
+        slot_id = await self.create_slot(
+            max_players=1,
+            host_participates=False,
+        )
         first_join = await self.client.post(
             f"/slots/{slot_id}/join",
             headers=self.headers(202),
@@ -296,7 +361,10 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(former_participant.status_code, 403)
 
     async def test_only_one_user_gets_last_place(self):
-        slot_id = await self.create_slot(max_players=1)
+        slot_id = await self.create_slot(
+            max_players=1,
+            host_participates=False,
+        )
 
         responses = await asyncio.gather(
             self.client.post(

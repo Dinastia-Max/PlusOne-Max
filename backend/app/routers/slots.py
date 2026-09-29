@@ -116,8 +116,19 @@ async def create_slot(
         session.add(slot)
         await session.flush()
 
+        participants_count = 0
+        if slot_data_in.host_participates:
+            session.add(
+                Participation(
+                    slot_id=slot.id,
+                    user_id=user_id,
+                    brings_ball=slot_data_in.has_ball,
+                )
+            )
+            participants_count = 1
+
     return SlotDetail(
-        **slot_data(slot, field, participants_count=0),
+        **slot_data(slot, field, participants_count=participants_count),
         min_players=slot.min_players,
         host_id=slot.host_id,
     )
