@@ -1,11 +1,17 @@
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user_id, get_optional_current_user_id
+from app.dependencies import (
+    MAX_USERNAME_PATTERN,
+    get_current_user_id,
+    get_current_username,
+    get_optional_current_user_id,
+)
 from app.models import Field, Participation, Slot
 from app.notifications import (
     cancel_slot_notifications,
@@ -25,6 +31,9 @@ from app.schemas import (
 
 
 router = APIRouter(prefix="/slots", tags=["slots"])
+
+# Старые записи "max:<user_id>" не содержат публичной ссылки и отдаются как "none".
+MAX_CONTACT_PREFIX = "maxuser:"
 
 
 def slot_data(
@@ -83,6 +92,7 @@ async def create_slot(
     slot_data_in: SlotCreate,
     user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
+    username: Annotated[str | None, Depends(get_current_username)] = None,
 ) -> SlotDetail:
     if slot_data_in.start_at <= datetime.now(timezone.utc):
         raise HTTPException(
@@ -115,8 +125,8 @@ async def create_slot(
             max_players=slot_data_in.max_players,
             has_ball=slot_data_in.has_ball,
             host_contact=(
-                f"max:{user_id}"
-                if slot_data_in.host_contact_type == "max"
+                f"{MAX_CONTACT_PREFIX}{username}"
+                if slot_data_in.host_contact_type == "max" and username
                 else f"tel:{slot_data_in.host_phone}"
                 if slot_data_in.host_contact_type == "phone"
                 else None
@@ -380,12 +390,14 @@ async def get_host_contact(
 
     if slot.host_contact is None:
         return HostContactResponse(type="none")
-    if slot.host_contact.startswith("max:"):
-        host_id = slot.host_contact.removeprefix("max:")
+    if slot.host_contact.startswith(MAX_CONTACT_PREFIX):
+        username = slot.host_contact.removeprefix(MAX_CONTACT_PREFIX)
+        if not MAX_USERNAME_PATTERN.fullmatch(username):
+            return HostContactResponse(type="none")
         return HostContactResponse(
             type="max",
             label="Написать в MAX",
-            href=f"max://user/{host_id}",
+            href=f"https://max.ru/{username}",
         )
     if slot.host_contact.startswith("tel:"):
         phone = slot.host_contact.removeprefix("tel:")

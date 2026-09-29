@@ -8,7 +8,7 @@ import {
   formatMonthShort,
   formatTimeRange,
 } from "../format";
-import { openMaxLink } from "../max";
+import { isMaxLink, openMaxLink } from "../max";
 import { hasEnded, hasStarted, isFull, slotStatus, useSlotBundle, type SlotBundle } from "../slotData";
 import { Button, ConfirmSheet, ErrorState, InfoRow, ProgressRing, TopBar } from "../ui";
 import { useRequest } from "../useRequest";
@@ -17,16 +17,20 @@ type Sheet = "join" | "leave" | "joined" | null;
 
 function ContactAction({ slotId }: { slotId: number }) {
   const [state] = useRequest((signal) => fetchHostContact(slotId, signal), [slotId]);
-  if (state.status !== "success" || state.data.type === "none" || !state.data.href) return null;
-  if (state.data.type === "max") {
+  if (state.status !== "success") return null;
+  const { type, href } = state.data;
+  if (type === "none" || !href) return null;
+  if (type === "max") {
+    if (!isMaxLink(href)) return null;
     return (
-      <Button kind="secondary" onClick={() => openMaxLink(state.data.href!)}>
+      <Button kind="secondary" onClick={() => openMaxLink(href)}>
         Связаться с организатором
       </Button>
     );
   }
+  if (!href.startsWith("tel:")) return null;
   return (
-    <a className="button button--secondary" href={state.data.href}>
+    <a className="button button--secondary" href={href}>
       Связаться с организатором
     </a>
   );
@@ -141,7 +145,6 @@ export default function Details({
     if (isHost) {
       return (
         <>
-          <ContactAction slotId={slot.id} />
           <Button kind="secondary" onClick={manage}>Управлять игрой</Button>
           <div className="sticky-action__caption">Вы организатор этой игры</div>
         </>

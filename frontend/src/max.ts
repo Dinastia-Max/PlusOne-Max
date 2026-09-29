@@ -48,13 +48,18 @@ export function signalReady(): void {
   getWebApp()?.ready?.();
 }
 
+export function isMaxLink(url: string | null | undefined): url is string {
+  return typeof url === "string" && url.startsWith("https://max.ru/") && url.length > "https://max.ru/".length;
+}
+
 export function openMaxLink(url: string): void {
+  if (!isMaxLink(url)) return;
   const bridge = getWebApp();
   if (bridge?.openMaxLink) {
     bridge.openMaxLink(url);
     return;
   }
-  window.location.href = url;
+  window.open(url, "_blank", "noopener");
 }
 
 export function useBackButton(onBack: (() => void) | null): void {
