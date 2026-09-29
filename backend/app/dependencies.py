@@ -1,7 +1,6 @@
 import hashlib
 import hmac
 import json
-import re
 import time
 from typing import Annotated
 from urllib.parse import unquote
@@ -103,37 +102,6 @@ async def get_current_user_id(
             detail="Invalid or expired MAX init data",
             headers={"WWW-Authenticate": "MaxInitData"},
         ) from exc
-
-
-MAX_USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_.-]{1,64}")
-
-
-def extract_max_username(init_data: str | None) -> str | None:
-    """Returns the public username from already validated init data."""
-    for item in (init_data or "").split("&"):
-        key, _, value = item.partition("=")
-        if unquote(key) != "user":
-            continue
-        try:
-            username = json.loads(unquote(value)).get("username")
-        except (AttributeError, ValueError):
-            return None
-        if isinstance(username, str):
-            username = username.strip().removeprefix("@")
-            if MAX_USERNAME_PATTERN.fullmatch(username):
-                return username
-        return None
-    return None
-
-
-async def get_current_username(
-    _user_id: Annotated[int, Depends(get_current_user_id)],
-    init_data: Annotated[
-        str | None,
-        Header(alias="X-Max-Init-Data"),
-    ] = None,
-) -> str | None:
-    return extract_max_username(init_data)
 
 
 async def get_optional_current_user_id(

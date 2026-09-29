@@ -8,7 +8,6 @@ import {
   formatMonthShort,
   formatTimeRange,
 } from "../format";
-import { isMaxLink, openMaxLink } from "../max";
 import { hasEnded, hasStarted, isFull, slotStatus, useSlotBundle, type SlotBundle } from "../slotData";
 import { Button, ConfirmSheet, ErrorState, InfoRow, ProgressRing, TopBar } from "../ui";
 import { useRequest } from "../useRequest";
@@ -19,16 +18,7 @@ function ContactAction({ slotId }: { slotId: number }) {
   const [state] = useRequest((signal) => fetchHostContact(slotId, signal), [slotId]);
   if (state.status !== "success") return null;
   const { type, href } = state.data;
-  if (type === "none" || !href) return null;
-  if (type === "max") {
-    if (!isMaxLink(href)) return null;
-    return (
-      <Button kind="secondary" onClick={() => openMaxLink(href)}>
-        Связаться с организатором
-      </Button>
-    );
-  }
-  if (!href.startsWith("tel:")) return null;
+  if (type !== "phone" || !href?.startsWith("tel:")) return null;
   return (
     <a className="button button--secondary" href={href}>
       Связаться с организатором

@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { ApiError, createSlot, fetchFields, type Field } from "../api";
 import { formatDate, formatDayLabel, formatDuration, localDateKey, localTimeValue } from "../format";
-import { getMaxUser } from "../max";
 import { useRequest } from "../useRequest";
 import { Button, ErrorState, Icon, SelectRow, TopBar } from "../ui";
+
+type ContactType = "phone" | "none";
 
 const DAYS_AHEAD = 7;
 const DURATIONS = [60, 90, 120, 150, 180];
@@ -83,8 +84,7 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
   const [minPlayers, setMinPlayers] = useState(6);
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [hasBall, setHasBall] = useState(true);
-  const hasMaxUsername = Boolean(getMaxUser()?.username);
-  const [contactType, setContactType] = useState<"max" | "phone" | "none">(hasMaxUsername ? "max" : "none");
+  const [contactType, setContactType] = useState<ContactType>("phone");
   const [phone, setPhone] = useState("");
   const [phoneConsent, setPhoneConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -228,15 +228,14 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
             <SelectRow
               icon="message"
               label="Как связаться"
-              value={contactType === "max" ? "Профиль MAX" : contactType === "phone" ? "Телефон" : "Не указывать"}
+              value={contactType === "phone" ? "Телефон" : "Не указывать"}
             >
               <select
                 className="select-row__native"
                 aria-label="Контакт организатора"
                 value={contactType}
-                onChange={(event) => setContactType(event.target.value as "max" | "phone" | "none")}
+                onChange={(event) => setContactType(event.target.value as ContactType)}
               >
-                <option value="max" disabled={!hasMaxUsername}>Профиль MAX</option>
                 <option value="phone">Телефон</option>
                 <option value="none">Не указывать</option>
               </select>
@@ -257,11 +256,6 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
             )}
           </div>
           <div className="form-hint">Контакт увидят только записавшиеся участники.</div>
-          {!hasMaxUsername && (
-            <div className="form-hint">
-              Чтобы открыть чат в MAX, в профиле нужен username. Пока его нет — укажите телефон.
-            </div>
-          )}
           {contactType === "phone" && (
             <div
               className="check-row contact-consent"

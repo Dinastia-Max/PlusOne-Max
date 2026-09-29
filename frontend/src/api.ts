@@ -34,7 +34,7 @@ export type Participant = {
 };
 
 export type HostContact = {
-  type: "max" | "phone" | "none";
+  type: "phone" | "none";
   label: string | null;
   href: string | null;
 };
@@ -46,7 +46,7 @@ export type SlotCreate = {
   min_players: number;
   max_players: number;
   has_ball: boolean;
-  host_contact_type: "max" | "phone" | "none";
+  host_contact_type: "phone" | "none";
   host_phone: string | null;
 };
 

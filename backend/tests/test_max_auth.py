@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from app.config import Settings
 from app.dependencies import (
     MaxInitDataError,
-    extract_max_username,
     get_current_user_id,
     get_optional_current_user_id,
     validate_max_init_data,
@@ -118,38 +117,6 @@ class MaxInitDataValidationTest(unittest.TestCase):
                 BOT_TOKEN,
                 3600,
             )
-
-
-class ExtractMaxUsernameTest(unittest.TestCase):
-    def test_returns_username(self):
-        init_data = signed_init_data(user={"id": USER_ID, "username": "ivan_1"})
-
-        self.assertEqual(extract_max_username(init_data), "ivan_1")
-
-    def test_strips_at_sign(self):
-        init_data = signed_init_data(user={"id": USER_ID, "username": "@ivan"})
-
-        self.assertEqual(extract_max_username(init_data), "ivan")
-
-    def test_returns_none_when_username_is_missing_or_empty(self):
-        for user in (
-            {"id": USER_ID},
-            {"id": USER_ID, "username": None},
-            {"id": USER_ID, "username": ""},
-        ):
-            with self.subTest(user=user):
-                self.assertIsNone(extract_max_username(signed_init_data(user=user)))
-
-    def test_rejects_unsafe_username(self):
-        init_data = signed_init_data(
-            user={"id": USER_ID, "username": "ivan/../admin?x=1"}
-        )
-
-        self.assertIsNone(extract_max_username(init_data))
-
-    def test_returns_none_without_init_data(self):
-        self.assertIsNone(extract_max_username(None))
-        self.assertIsNone(extract_max_username("broken"))
 
 
 class CurrentUserDependencyTest(unittest.IsolatedAsyncioTestCase):
