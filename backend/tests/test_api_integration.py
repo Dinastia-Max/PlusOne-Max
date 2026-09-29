@@ -69,15 +69,12 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     @staticmethod
-    def headers(user_id: int, username: str | None = None) -> dict[str, str]:
-        user = {"id": user_id, "first_name": "Test"}
-        if username:
-            user["username"] = username
+    def headers(user_id: int) -> dict[str, str]:
         params = {
             "auth_date": str(int(time.time())),
             "query_id": f"integration-test-{user_id}",
             "user": json.dumps(
-                user,
+                {"id": user_id, "first_name": "Test"},
                 separators=(",", ":"),
             ),
         }
@@ -483,59 +480,6 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
             headers=self.headers(202),
         )
         self.assertEqual(former_participant.status_code, 403)
-
-    async def test_max_host_contact_uses_public_link(self):
-        create_response = await self.client.post(
-            "/slots",
-            headers=self.headers(101, username="host_user"),
-            json=self.slot_payload(),
-        )
-        self.assertEqual(create_response.status_code, 201, create_response.text)
-        slot_id = create_response.json()["id"]
-
-        await self.client.post(
-            f"/slots/{slot_id}/join",
-            headers=self.headers(202),
-        )
-        participant_contact = await self.client.get(
-            f"/slots/{slot_id}/host-contact",
-            headers=self.headers(202),
-        )
-        self.assertEqual(participant_contact.status_code, 200)
-        self.assertEqual(
-            participant_contact.json(),
-            {
-                "type": "max",
-                "label": "Написать в MAX",
-                "href": "https://max.ru/host_user",
-            },
-        )
-
-        outsider = await self.client.get(
-            f"/slots/{slot_id}/host-contact",
-            headers=self.headers(303),
-        )
-        self.assertEqual(outsider.status_code, 403)
-
-    async def test_max_host_contact_without_username_is_none(self):
-        create_response = await self.client.post(
-            "/slots",
-            headers=self.headers(101),
-            json=self.slot_payload(),
-        )
-        self.assertEqual(create_response.status_code, 201, create_response.text)
-        slot_id = create_response.json()["id"]
-
-        await self.client.post(
-            f"/slots/{slot_id}/join",
-            headers=self.headers(202),
-        )
-        contact = await self.client.get(
-            f"/slots/{slot_id}/host-contact",
-            headers=self.headers(202),
-        )
-        self.assertEqual(contact.status_code, 200)
-        self.assertEqual(contact.json(), {"type": "none", "label": None, "href": None})
 
     async def test_only_one_user_gets_last_place(self):
         slot_id = await self.create_slot(max_players=2)

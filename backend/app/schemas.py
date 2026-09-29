@@ -40,7 +40,7 @@ class SlotCreate(BaseModel):
     min_players: int = Field(gt=0)
     max_players: int = Field(gt=0)
     has_ball: bool = False
-    host_contact_type: Literal["max", "phone", "none"] = "max"
+    host_contact_type: Literal["phone", "none"] = "none"
     host_phone: str | None = Field(default=None, max_length=32)
 
     @model_validator(mode="after")
@@ -68,6 +68,6 @@ class ParticipantResponse(BaseModel):
 
 
 class HostContactResponse(BaseModel):
-    type: Literal["max", "phone", "none"]
+    type: Literal["phone", "none"]
     label: str | None = None
     href: str | None = None
