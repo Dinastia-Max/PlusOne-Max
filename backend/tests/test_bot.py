@@ -20,6 +20,21 @@ class WelcomeMessageTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(button["web_app"], "plusone_bot")
         response.raise_for_status.assert_called_once_with()
 
+    async def test_sends_plain_text_notification(self):
+        response = Mock(is_success=True)
+        bot = MaxBot.__new__(MaxBot)
+        bot.client = Mock()
+        bot.client.post = AsyncMock(return_value=response)
+
+        await bot.send_text(user_id=42, text="Игра подтверждена")
+
+        bot.client.post.assert_awaited_once_with(
+            "/messages",
+            params={"user_id": 42},
+            json={"text": "Игра подтверждена"},
+        )
+        response.raise_for_status.assert_called_once_with()
+
     async def test_registers_start_command(self):
         response = Mock()
         bot = MaxBot.__new__(MaxBot)

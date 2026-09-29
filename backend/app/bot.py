@@ -66,6 +66,27 @@ class MaxBot:
         )
         response.raise_for_status()
 
+    async def send_message(
+        self,
+        user_id: int,
+        body: dict[str, Any],
+    ) -> None:
+        response = await self.client.post(
+            "/messages",
+            params={"user_id": user_id},
+            json=body,
+        )
+        if not response.is_success:
+            logger.error(
+                "MAX send message failed: status=%s body=%s",
+                response.status_code,
+                response.text,
+            )
+        response.raise_for_status()
+
+    async def send_text(self, user_id: int, text: str) -> None:
+        await self.send_message(user_id, {"text": text})
+
     async def send_welcome(self, user_id: int) -> None:
         body: dict[str, Any] = {"text": WELCOME_TEXT}
         if self.web_app:
@@ -88,18 +109,7 @@ class MaxBot:
         else:
             body["text"] += "\n\nМини-приложение пока не подключено."
 
-        response = await self.client.post(
-            "/messages",
-            params={"user_id": user_id},
-            json=body,
-        )
-        if not response.is_success:
-            logger.error(
-                "MAX send message failed: status=%s body=%s",
-                response.status_code,
-                response.text,
-            )
-        response.raise_for_status()
+        await self.send_message(user_id, body)
 
 
 def get_user_id(update: dict[str, Any]) -> int | None:

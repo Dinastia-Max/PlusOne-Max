@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     max_bot_token: str = ""
     max_mini_app_url: str = ""
     max_auth_max_age_seconds: int = 3600
+    notification_poll_interval_seconds: float = 10.0
+    notification_batch_size: int = 50
+    notification_max_attempts: int = 5
+    notification_lock_timeout_seconds: int = 300
+    notification_retry_delay_seconds: int = 60
     cors_origins: str = (
         "http://localhost:8080,http://localhost:8443,http://localhost:5173"
     )

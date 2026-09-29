@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import Base
 from app.main import app
-from app.models import Field, Participation, Slot
+from app.models import Field, NotificationJob, Participation, Slot
 from app.routers.slots import join_slot, leave_slot, overlapping_slots_query
 from test_support import ConfiguredAuthTestCase
 
@@ -46,7 +46,8 @@ class FakeSession:
         return TransactionContext()
 
     async def execute(self, statement):
-        return FakeResult(self.results.pop(0))
+        value = self.results.pop(0) if self.results else None
+        return FakeResult(value)
 
     async def scalar(self, statement):
         self.scalar_statements.append(statement)
@@ -81,9 +82,17 @@ class JoinSlotTest(unittest.IsolatedAsyncioTestCase):
         response = await join_slot(slot_id=1, user_id=42, session=session)
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        self.assertEqual(len(session.added), 1)
         self.assertEqual(session.added[0].slot_id, 1)
         self.assertEqual(session.added[0].user_id, 42)
+        notifications = [
+            value
+            for value in session.added
+            if isinstance(value, NotificationJob)
+        ]
+        self.assertEqual(
+            [job.notification_type for job in notifications],
+            ["joined"],
+        )
         self.assertIn("pg_advisory_xact_lock", str(session.scalar_statements[0]))
 
     async def test_missing_slot_returns_not_found(self):
