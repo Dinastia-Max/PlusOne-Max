@@ -894,6 +894,20 @@ body {
   cursor: pointer;
 }
 
+.contact-input {
+  width: 100%;
+  min-height: 58px;
+  padding: 0 16px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+
+.contact-consent { margin: 10px 0 0; }
+.sticky-action > .button + .button { margin-top: 8px; }
+
 .privacy-note {
   margin: 12px 7px 22px;
   display: flex;
@@ -1221,4 +1235,112 @@ body {
 @keyframes skeleton-shimmer {
   from { background-position: 200% 0; }
   to { background-position: -200% 0; }
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.tag--host {
+  color: var(--violet);
+  background: #f0edff;
+}
+
+.date-pill {
+  position: relative;
+  flex: 0 0 auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.date-pill.has-games::after {
+  content: "";
+  position: absolute;
+  bottom: 6px;
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--blue);
+}
+
+.date-pill.is-active.has-games::after {
+  background: var(--surface);
+}
+
+.select-row {
+  position: relative;
+}
+
+.select-row--static {
+  cursor: default;
+}
+
+.select-row__copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.select-row__native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.counter-card b {
+  cursor: pointer;
+  user-select: none;
+}
+
+.counter-card b.is-disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.form-hint {
+  margin: 8px 6px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.form-error,
+.sheet__error {
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.form-error {
+  margin: 14px 0 0;
+}
+
+.sheet__error {
+  margin: 0 0 14px;
+  text-align: center;
+}
+
+.form-submit {
+  margin-top: 18px;
+}
+
+.slot-card__action {
+  cursor: default;
+}
+
+.slot-card__action .button {
+  margin-top: 15px;
 }

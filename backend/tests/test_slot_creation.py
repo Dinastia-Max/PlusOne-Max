@@ -80,6 +80,7 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.participants_count, 0)
         self.assertEqual(response.field.id, 1)
         self.assertIsInstance(session.added[0], Slot)
+        self.assertEqual(session.added[0].host_contact, "max:42")
         notifications = [
             value
             for value in session.added
@@ -89,6 +90,27 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
             {job.notification_type for job in notifications},
             {"reminder_2h", "game_status_1h"},
         )
+
+    async def test_phone_contact_is_normalized_and_saved(self):
+        field = Field(
+            id=1,
+            name="Test field",
+            address="Test address",
+            district="Test district",
+            is_active=True,
+        )
+        session = FakeSession(field)
+
+        await create_slot(
+            slot_data_in=valid_slot_data(
+                host_contact_type="phone",
+                host_phone="+7 (999) 123-45-67",
+            ),
+            user_id=42,
+            session=session,
+        )
+
+        self.assertEqual(session.added[0].host_contact, "tel:+79991234567")
 
     async def test_active_field_is_required(self):
         session = FakeSession(None)
@@ -123,6 +145,21 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SlotCreateSchemaTest(unittest.TestCase):
+    def test_phone_contact_requires_valid_international_phone(self):
+        with self.assertRaises(ValidationError):
+            valid_slot_data(host_contact_type="phone")
+
+        with self.assertRaises(ValidationError):
+            valid_slot_data(host_contact_type="phone", host_phone="89991234567")
+
+    def test_phone_is_discarded_for_non_phone_contact(self):
+        slot_data = valid_slot_data(
+            host_contact_type="max",
+            host_phone="+79991234567",
+        )
+
+        self.assertIsNone(slot_data.host_phone)
+
     def test_end_must_be_later_than_start(self):
         start_at = datetime.now(timezone.utc) + timedelta(days=1)
 
