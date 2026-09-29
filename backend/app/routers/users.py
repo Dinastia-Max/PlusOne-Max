@@ -34,8 +34,13 @@ async def get_current_user_slots(
 
     return [
         UserSlotListItem(
-            **slot_data(slot, field, participants_count),
+            **slot_data(
+                slot,
+                field,
+                participants_count,
+                participants_with_ball,
+            ),
             role="host" if slot.host_id == user_id else "participant",
         )
-        for slot, field, participants_count in result.all()
+        for slot, field, participants_count, participants_with_ball in result.all()
     ]

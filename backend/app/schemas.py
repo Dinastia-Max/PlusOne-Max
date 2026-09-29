@@ -67,6 +67,10 @@ class ParticipantResponse(BaseModel):
     joined_at: datetime
 
 
+class JoinSlotRequest(BaseModel):
+    brings_ball: bool = False
+
+
 class HostContactResponse(BaseModel):
     type: Literal["phone", "none"]
     label: str | None = None

@@ -227,8 +227,11 @@ export function createSlot(data: SlotCreate): Promise<SlotDetail> {
   return request<SlotDetail>("/slots", { method: "POST", body: data });
 }
 
-export function joinSlot(id: number): Promise<void> {
-  return request<void>(`/slots/${id}/join`, { method: "POST" });
+export function joinSlot(id: number, bringsBall = false): Promise<void> {
+  return request<void>(`/slots/${id}/join`, {
+    method: "POST",
+    body: { brings_ball: bringsBall },
+  });
 }
 
 export function leaveSlot(id: number): Promise<void> {

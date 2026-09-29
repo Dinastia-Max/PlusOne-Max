@@ -103,6 +103,7 @@ export default function Details({
   const [state, reload] = useSlotBundle(slotId);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [busy, setBusy] = useState(false);
+  const [bringsBall, setBringsBall] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const bundle = state.status === "success" ? state.data : null;
@@ -111,6 +112,7 @@ export default function Details({
 
   const openSheet = (next: Sheet) => {
     setActionError(null);
+    if (next === "join") setBringsBall(false);
     setSheet(next);
   };
 
@@ -214,9 +216,27 @@ export default function Details({
           confirmLabel="Записаться"
           busy={busy}
           error={actionError}
-          onConfirm={() => run(() => joinSlot(slot.id), "joined")}
+          onConfirm={() => run(() => joinSlot(slot.id, bringsBall), "joined")}
           onClose={closeSheet}
-        />
+        >
+          {!slot.has_ball && (
+            <div
+              className="check-row"
+              role="checkbox"
+              aria-checked={bringsBall}
+              tabIndex={0}
+              onClick={() => setBringsBall(!bringsBall)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setBringsBall(!bringsBall);
+              }}
+            >
+              <div className={`checkbox${bringsBall ? " is-checked" : ""}`}>
+                {bringsBall && <Icon name="check" size={15} />}
+              </div>
+              <div><strong>Я возьму мяч</strong><span>Участники увидят, что мяч будет</span></div>
+            </div>
+          )}
+        </ConfirmSheet>
       )}
       {slot && sheet === "leave" && (
         <ConfirmSheet
@@ -241,7 +261,9 @@ export default function Details({
           tone="success"
           icon="check"
           title="Вы в игре!"
-          copy="Место за вами закреплено. Игра появилась в разделе «Мои игры»."
+          copy={bringsBall
+            ? "Место за вами закреплено. Отметили, что вы принесёте мяч."
+            : "Место за вами закреплено. Игра появилась в разделе «Мои игры»."}
           confirmLabel="Отлично"
           onConfirm={closeSheet}
           onClose={closeSheet}
