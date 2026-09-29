@@ -1,0 +1,174 @@
+schemaVersion: "1.0"
+
+solution:
+  name: "PlusOne"
+  teamId: "Dinastia-Max"
+
+api:
+  baseUrl: "https://plusone-api-os3a.onrender.com"
+  defaultHeaders:
+    Accept: "application/json"
+
+checks:
+  - id: "get-fields"
+    name: "Получить список футбольных площадок"
+    description: "Проверяет доступность API и получение активных площадок."
+    method: "GET"
+    path: "/fields"
+    role: "public"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+    timeoutMs: 90000
+    repeatable: true
+
+  - id: "get-slots"
+    name: "Получить список доступных игр"
+    description: "Проверяет публичное получение списка актуальных игр."
+    method: "GET"
+    path: "/slots"
+    role: "public"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+    timeoutMs: 90000
+    repeatable: true
+
+  - id: "create-slot"
+    name: "Создать тестовую игру"
+    description: "Создаёт временную игру от имени тестового пользователя MAX."
+    method: "POST"
+    path: "/slots"
+    role: "max-user"
+    request:
+      headers:
+        Content-Type: "application/json"
+      body:
+        field_id: 1
+        start_at: "2027-01-15T15:00:00Z"
+        end_at: "2027-01-15T17:00:00Z"
+        min_players: 2
+        max_players: 10
+        has_ball: true
+        host_contact_type: "none"
+        host_phone: null
+    expected:
+      statusCodes: [201]
+      contentType: "application/json"
+      requiredFields:
+        - "id"
+        - "start_at"
+        - "end_at"
+        - "max_players"
+        - "participants_count"
+        - "field"
+        - "is_host"
+      bodySchema:
+        type: "object"
+        required:
+          - "id"
+          - "start_at"
+          - "end_at"
+          - "max_players"
+          - "participants_count"
+          - "field"
+          - "is_host"
+        properties:
+          id:
+            type: "integer"
+          participants_count:
+            type: "integer"
+            minimum: 1
+          is_host:
+            type: "boolean"
+            const: true
+    timeoutMs: 90000
+    repeatable: false
+    extract:
+      slotId: "$.id"
+
+  - id: "get-created-slot"
+    name: "Получить созданную игру"
+    description: "Проверяет чтение созданной игры по идентификатору."
+    method: "GET"
+    path: "/slots/{slotId}"
+    role: "max-user"
+    dependsOn:
+      - "create-slot"
+    request:
+      path:
+        slotId: "${slotId}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields:
+        - "id"
+        - "start_at"
+        - "end_at"
+        - "participants_count"
+        - "field"
+        - "is_host"
+    timeoutMs: 90000
+    repeatable: true
+
+  - id: "get-my-slots"
+    name: "Получить игры тестового пользователя"
+    description: "Проверяет, что созданная игра отображается у организатора."
+    method: "GET"
+    path: "/users/me/slots"
+    role: "max-user"
+    dependsOn:
+      - "create-slot"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+    timeoutMs: 90000
+    repeatable: true
+
+  - id: "get-participants"
+    name: "Получить состав созданной игры"
+    description: "Проверяет доступ организатора к обезличенному списку участников."
+    method: "GET"
+    path: "/slots/{slotId}/participants"
+    role: "max-user"
+    dependsOn:
+      - "create-slot"
+    request:
+      path:
+        slotId: "${slotId}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+    timeoutMs: 90000
+    repeatable: true
+
+  - id: "get-host-contact"
+    name: "Получить настройку контакта организатора"
+    description: "Проверяет доступ участника игры к настройке контакта организатора."
+    method: "GET"
+    path: "/slots/{slotId}/host-contact"
+    role: "max-user"
+    dependsOn:
+      - "create-slot"
+    request:
+      path:
+        slotId: "${slotId}"
+    expected:
+      statusCodes: [200]
+      contentType: "application/json"
+      requiredFields:
+        - "type"
+    timeoutMs: 90000
+    repeatable: true
+
+cleanup:
+  - id: "cancel-test-slot"
+    method: "DELETE"
+    path: "/slots/{slotId}"
+    role: "max-user"
+    request:
+      path:
+        slotId: "${slotId}"
+    expected:
+      statusCodes: [204, 404]
+    timeoutMs: 90000

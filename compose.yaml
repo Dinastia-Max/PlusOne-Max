@@ -1,0 +1,119 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-plusone}
+      POSTGRES_USER: ${POSTGRES_USER:-plusone}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plusone}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-plusone} -d ${POSTGRES_DB:-plusone}
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  test-postgres:
+    profiles: ["test"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: plusone_test
+      POSTGRES_USER: plusone_test
+      POSTGRES_PASSWORD: plusone_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plusone_test -d plusone_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://plusone:plusone@postgres:5432/plusone}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_MINI_APP_URL: ${MAX_MINI_APP_URL:-}
+      MAX_AUTH_MAX_AGE_SECONDS: ${MAX_AUTH_MAX_AGE_SECONDS:-3600}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080,http://localhost:8443,http://localhost:5173}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command:
+      - sh
+      - -c
+      - >
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  backend-test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+    command:
+      - sh
+      - -c
+      - alembic upgrade head && python -m unittest discover -s tests -v
+    environment:
+      DATABASE_URL: postgresql+asyncpg://plusone_test:plusone_test@test-postgres:5432/plusone_test
+      RUN_API_INTEGRATION_TESTS: "1"
+      MAX_BOT_TOKEN: test-bot-token
+      MAX_AUTH_MAX_AGE_SECONDS: "3600"
+    volumes:
+      - ./backend/tests:/app/tests:ro
+    depends_on:
+      test-postgres:
+        condition: service_healthy
+
+  bot:
+    build:
+      context: ./backend
+    command:
+      - python
+      - -m
+      - app.bot
+    environment:
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      MAX_MINI_APP_URL: ${MAX_MINI_APP_URL:-}
+    restart: unless-stopped
+
+  notification-worker:
+    build:
+      context: ./backend
+    command:
+      - python
+      - -m
+      - app.notification_worker
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://plusone:plusone@postgres:5432/plusone}
+      MAX_BOT_TOKEN: ${MAX_BOT_TOKEN:-}
+      NOTIFICATION_POLL_INTERVAL_SECONDS: ${NOTIFICATION_POLL_INTERVAL_SECONDS:-10}
+      NOTIFICATION_BATCH_SIZE: ${NOTIFICATION_BATCH_SIZE:-50}
+      NOTIFICATION_MAX_ATTEMPTS: ${NOTIFICATION_MAX_ATTEMPTS:-5}
+      NOTIFICATION_LOCK_TIMEOUT_SECONDS: ${NOTIFICATION_LOCK_TIMEOUT_SECONDS:-300}
+      NOTIFICATION_RETRY_DELAY_SECONDS: ${NOTIFICATION_RETRY_DELAY_SECONDS:-60}
+      NOTIFICATION_STATS_INTERVAL_SECONDS: ${NOTIFICATION_STATS_INTERVAL_SECONDS:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  miniapp:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    ports:
+      - "${MINI_APP_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
