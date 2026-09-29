@@ -231,6 +231,70 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(canceled.status_code, 409)
         self.assertEqual(canceled.json()["detail"], "Slot is canceled")
 
+    async def test_host_contact_is_private(self):
+        create_response = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json={
+                **self.slot_payload(),
+                "host_contact_type": "phone",
+                "host_phone": "+7 (999) 123-45-67",
+            },
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.text)
+        slot_id = create_response.json()["id"]
+        self.assertNotIn("host_contact", create_response.json())
+
+        public_list = await self.client.get("/slots")
+        public_detail = await self.client.get(f"/slots/{slot_id}")
+        self.assertNotIn("host_contact", public_list.json()[0])
+        self.assertNotIn("host_contact", public_detail.json())
+
+        unauthorized = await self.client.get(f"/slots/{slot_id}/host-contact")
+        self.assertEqual(unauthorized.status_code, 401)
+
+        outsider = await self.client.get(
+            f"/slots/{slot_id}/host-contact",
+            headers=self.headers(303),
+        )
+        self.assertEqual(outsider.status_code, 403)
+
+        host_contact = await self.client.get(
+            f"/slots/{slot_id}/host-contact",
+            headers=self.headers(101),
+        )
+        self.assertEqual(host_contact.status_code, 200)
+        self.assertEqual(
+            host_contact.json(),
+            {
+                "type": "phone",
+                "label": "+79991234567",
+                "href": "tel:+79991234567",
+            },
+        )
+
+        join_response = await self.client.post(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(202),
+        )
+        self.assertEqual(join_response.status_code, 204)
+        participant_contact = await self.client.get(
+            f"/slots/{slot_id}/host-contact",
+            headers=self.headers(202),
+        )
+        self.assertEqual(participant_contact.status_code, 200)
+        self.assertEqual(participant_contact.json(), host_contact.json())
+
+        await self.client.delete(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(202),
+        )
+        former_participant = await self.client.get(
+            f"/slots/{slot_id}/host-contact",
+            headers=self.headers(202),
+        )
+        self.assertEqual(former_participant.status_code, 403)
+
     async def test_only_one_user_gets_last_place(self):
         slot_id = await self.create_slot(max_players=1)
 

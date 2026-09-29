@@ -82,6 +82,9 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
   const [minPlayers, setMinPlayers] = useState(6);
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [hasBall, setHasBall] = useState(true);
+  const [contactType, setContactType] = useState<"max" | "phone" | "none">("max");
+  const [phone, setPhone] = useState("");
+  const [phoneConsent, setPhoneConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +104,14 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
     if (busy) return;
     if (!field) {
       setError("Выберите площадку.");
+      return;
+    }
+    if (contactType === "phone" && !/^\+[1-9]\d{7,14}$/.test(phone.replace(/[\s()-]/g, ""))) {
+      setError("Укажите телефон в международном формате, например +79991234567.");
+      return;
+    }
+    if (contactType === "phone" && !phoneConsent) {
+      setError("Подтвердите согласие на показ телефона участникам.");
       return;
     }
     const start = new Date(`${dayKey}T${time}:00`);
@@ -124,6 +135,8 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
         min_players: minPlayers,
         max_players: maxPlayers,
         has_ball: hasBall,
+        host_contact_type: contactType,
+        host_phone: contactType === "phone" ? phone : null,
       });
       created(slot.id);
     } catch (caught) {
@@ -206,6 +219,57 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
             <Counter label="Минимум" value={minPlayers} onChange={changeMin} min={MIN_PLAYERS_LIMIT} max={MAX_PLAYERS_LIMIT} />
             <Counter label="Максимум" value={maxPlayers} onChange={changeMax} min={MIN_PLAYERS_LIMIT} max={MAX_PLAYERS_LIMIT} />
           </div>
+        </div>
+        <div className="form-section">
+          <div className="form-label">КОНТАКТ ОРГАНИЗАТОРА</div>
+          <div className="form-card">
+            <SelectRow
+              icon="message"
+              label="Как связаться"
+              value={contactType === "max" ? "Профиль MAX" : contactType === "phone" ? "Телефон" : "Не указывать"}
+            >
+              <select
+                className="select-row__native"
+                aria-label="Контакт организатора"
+                value={contactType}
+                onChange={(event) => setContactType(event.target.value as "max" | "phone" | "none")}
+              >
+                <option value="max">Профиль MAX</option>
+                <option value="phone">Телефон</option>
+                <option value="none">Не указывать</option>
+              </select>
+            </SelectRow>
+            {contactType === "phone" && (
+              <>
+                <div className="divider" />
+                <input
+                  className="contact-input"
+                  aria-label="Телефон организатора"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="+7 999 123-45-67"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
+              </>
+            )}
+          </div>
+          <div className="form-hint">Контакт увидят только организатор и записавшиеся участники.</div>
+          {contactType === "phone" && (
+            <div
+              className="check-row contact-consent"
+              role="checkbox"
+              aria-checked={phoneConsent}
+              tabIndex={0}
+              onClick={() => setPhoneConsent(!phoneConsent)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") setPhoneConsent(!phoneConsent);
+              }}
+            >
+              <div className={`checkbox${phoneConsent ? " is-checked" : ""}`}>{phoneConsent && <Icon name="check" size={15} />}</div>
+              <div><strong>Разрешаю показать мой телефон</strong><span>Только записавшимся на эту игру</span></div>
+            </div>
+          )}
         </div>
         <div
           className="form-card switch-card"

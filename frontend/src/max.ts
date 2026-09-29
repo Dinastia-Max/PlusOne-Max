@@ -12,6 +12,7 @@ type WebAppBridge = {
   initData?: string;
   initDataUnsafe?: { user?: MaxUser };
   ready?: () => void;
+  openMaxLink?: (url: string) => void;
   BackButton?: {
     show?: () => void;
     hide?: () => void;
@@ -45,6 +46,15 @@ export function getUserName(user: MaxUser | null): string {
 
 export function signalReady(): void {
   getWebApp()?.ready?.();
+}
+
+export function openMaxLink(url: string): void {
+  const bridge = getWebApp();
+  if (bridge?.openMaxLink) {
+    bridge.openMaxLink(url);
+    return;
+  }
+  window.location.href = url;
 }
 
 export function useBackButton(onBack: (() => void) | null): void {
