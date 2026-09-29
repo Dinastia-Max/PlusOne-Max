@@ -114,7 +114,7 @@ export default function Details({
   const me = getMaxUser();
   const bundle = state.status === "success" ? state.data : null;
   const isHost = bundle !== null && me !== null && bundle.slot.host_id === me.id;
-  const joined = bundle !== null && me !== null && bundle.participants.some((p) => p.user_id === me.id);
+  const joined = bundle !== null && bundle.participants.some((participant) => participant.is_current_user);
 
   const openSheet = (next: Sheet) => {
     setActionError(null);

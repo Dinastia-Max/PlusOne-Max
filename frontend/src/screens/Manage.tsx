@@ -75,7 +75,7 @@ export default function Manage({
             ) : (
               <div className="people-list">
                 {participants.map((participant, index) => (
-                  <div className="person-row" key={participant.user_id}>
+                  <div className="person-row" key={`${participant.joined_at}-${index}`}>
                     <Avatar name={String(index + 1)} tone={TONES[index % TONES.length]} />
                     <div>
                       <strong>Участник {index + 1}</strong>

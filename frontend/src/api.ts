@@ -28,7 +28,7 @@ export type UserSlot = SlotListItem & {
 };
 
 export type Participant = {
-  user_id: number;
+  is_current_user: boolean;
   brings_ball: boolean;
   joined_at: string;
 };
@@ -83,6 +83,7 @@ const DETAIL_MESSAGES: Record<string, string> = {
   "Only the host can cancel this slot": "Отменить игру может только организатор.",
   "Participation not found": "Вы не записаны на эту игру.",
   "Host cannot leave own slot": "Организатор не может выйти из своей игры.",
+  "Participants are available to game members only": "Состав доступен только участникам игры.",
   "Slot must start in the future": "Игра должна начинаться в будущем.",
   "Invalid or expired MAX init data": AUTH_MESSAGE,
   "MAX authentication is not configured": "Сервер пока не настроен для входа через MAX.",
@@ -161,7 +162,10 @@ export function fetchSlot(id: number, signal?: AbortSignal): Promise<SlotDetail>
 }
 
 export function fetchParticipants(id: number, signal?: AbortSignal): Promise<Participant[]> {
-  return requestList<Participant>(`/slots/${id}/participants`, signal);
+  return requestList<Participant>(`/slots/${id}/participants`, signal).catch((error: unknown) => {
+    if (error instanceof ApiError && (error.kind === "unauthorized" || error.kind === "forbidden")) return [];
+    throw error;
+  });
 }
 
 export function fetchHostContact(id: number, signal?: AbortSignal): Promise<HostContact> {

@@ -402,18 +402,31 @@ async def get_host_contact(
 )
 async def get_slot_participants(
     slot_id: int,
+    user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
 ) -> list[ParticipantResponse]:
-    slot_exists = await session.scalar(
-        select(Slot.id).where(
-            Slot.id == slot_id,
-            Slot.canceled_at.is_(None),
+    access_result = await session.execute(
+        select(Slot.host_id, Participation.user_id)
+        .outerjoin(
+            Participation,
+            and_(
+                Participation.slot_id == Slot.id,
+                Participation.user_id == user_id,
+            ),
         )
+        .where(Slot.id == slot_id, Slot.canceled_at.is_(None))
     )
-    if slot_exists is None:
+    access = access_result.one_or_none()
+    if access is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Slot not found",
+        )
+    host_id, participant_user_id = access
+    if host_id != user_id and participant_user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Participants are available to game members only",
         )
 
     result = await session.scalars(
@@ -422,6 +435,10 @@ async def get_slot_participants(
         .order_by(Participation.joined_at, Participation.user_id)
     )
     return [
-        ParticipantResponse.model_validate(participation)
+        ParticipantResponse(
+            is_current_user=participation.user_id == user_id,
+            brings_ball=participation.brings_ball,
+            joined_at=participation.joined_at,
+        )
         for participation in result.all()
     ]

@@ -62,9 +62,7 @@ class SlotCreate(BaseModel):
 
 
 class ParticipantResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    user_id: int
+    is_current_user: bool
     brings_ball: bool
     joined_at: datetime
 
