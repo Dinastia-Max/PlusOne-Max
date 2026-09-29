@@ -40,6 +40,7 @@ export type SlotCreate = {
   min_players: number;
   max_players: number;
   has_ball: boolean;
+  host_participates: boolean;
 };
 
 export type ApiErrorKind =

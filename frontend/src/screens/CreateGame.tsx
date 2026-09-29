@@ -82,6 +82,7 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
   const [minPlayers, setMinPlayers] = useState(6);
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [hasBall, setHasBall] = useState(true);
+  const [hostParticipates, setHostParticipates] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,6 +125,7 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
         min_players: minPlayers,
         max_players: maxPlayers,
         has_ball: hasBall,
+        host_participates: hostParticipates,
       });
       created(slot.id);
     } catch (caught) {
@@ -206,6 +208,20 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
             <Counter label="Минимум" value={minPlayers} onChange={changeMin} min={MIN_PLAYERS_LIMIT} max={MAX_PLAYERS_LIMIT} />
             <Counter label="Максимум" value={maxPlayers} onChange={changeMax} min={MIN_PLAYERS_LIMIT} max={MAX_PLAYERS_LIMIT} />
           </div>
+        </div>
+        <div
+          className="form-card switch-card"
+          role="switch"
+          aria-checked={hostParticipates}
+          tabIndex={0}
+          onClick={() => setHostParticipates(!hostParticipates)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") setHostParticipates(!hostParticipates);
+          }}
+        >
+          <div className="select-row__icon"><Icon name="profile" /></div>
+          <div className="select-row__copy"><strong>Я участвую в игре</strong><span>Учтём вас в составе и количестве мест</span></div>
+          <div className={`toggle${hostParticipates ? " is-on" : ""}`}><div /></div>
         </div>
         <div
           className="form-card switch-card"
