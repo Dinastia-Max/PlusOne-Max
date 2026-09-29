@@ -8,11 +8,31 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.models import Field, NotificationJob, Participation, Slot
-from app.notification_worker import NotificationWorker
+from app.notification_worker import NotificationWorker, slot_summary
 
 
 RUN_INTEGRATION_TESTS = os.getenv("RUN_API_INTEGRATION_TESTS") == "1"
 TEST_DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+
+class NotificationFormattingTest(unittest.TestCase):
+    def test_formats_slot_time_in_moscow_timezone(self):
+        slot = Slot(
+            start_at=datetime(2026, 1, 15, 15, 30, tzinfo=timezone.utc),
+            end_at=datetime(2026, 1, 15, 17, 0, tzinfo=timezone.utc),
+        )
+        field = Field(
+            name="Тестовое поле",
+            address="Москва, Тестовая улица, 1",
+        )
+
+        summary = slot_summary(slot, field)
+
+        self.assertEqual(
+            summary,
+            "15.01.2026, 18:30–20:00\n"
+            "Тестовое поле, Москва, Тестовая улица, 1",
+        )
 
 
 @unittest.skipUnless(

@@ -4,4 +4,5 @@ fastapi==0.141.1
 httpx==0.28.1
 pydantic-settings==2.15.0
 sqlalchemy[asyncio]==2.0.54
+tzdata==2026.4
 uvicorn[standard]==0.53.0
