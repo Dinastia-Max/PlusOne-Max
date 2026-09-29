@@ -227,6 +227,42 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(participants.status_code, 200)
         self.assertEqual(participants.json(), [])
 
+    async def test_participating_host_cannot_create_overlapping_slot(self):
+        start_at = datetime.now(timezone.utc) + timedelta(days=2)
+        first = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json=self.slot_payload(
+                start_at=start_at,
+                host_participates=True,
+            ),
+        )
+        self.assertEqual(first.status_code, 201, first.text)
+
+        overlapping = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json=self.slot_payload(
+                start_at=start_at + timedelta(minutes=30),
+                host_participates=True,
+            ),
+        )
+        self.assertEqual(overlapping.status_code, 409)
+        self.assertEqual(
+            overlapping.json()["detail"],
+            "User has an overlapping slot",
+        )
+
+        organizing_only = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json=self.slot_payload(
+                start_at=start_at + timedelta(minutes=30),
+                host_participates=False,
+            ),
+        )
+        self.assertEqual(organizing_only.status_code, 201, organizing_only.text)
+
     async def test_api_errors(self):
         unauthorized = await self.client.post(
             "/slots",
