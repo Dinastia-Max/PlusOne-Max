@@ -301,11 +301,11 @@ class NotificationWorker:
                 job_id,
             )
 
-    async def claim_due_jobs(
+    async def claim_due_job(
         self,
         *,
         now: datetime | None = None,
-    ) -> list[int]:
+    ) -> int | None:
         now = now or datetime.now(timezone.utc)
         stale_before = now - self.lock_timeout
 
@@ -313,7 +313,7 @@ class NotificationWorker:
             async with session.begin():
                 await self.recover_stale_jobs(session, stale_before)
 
-                result = await session.scalars(
+                job = await session.scalar(
                     select(NotificationJob)
                     .where(
                         NotificationJob.status == "pending",
@@ -323,15 +323,15 @@ class NotificationWorker:
                         NotificationJob.scheduled_at,
                         NotificationJob.id,
                     )
-                    .limit(self.batch_size)
+                    .limit(1)
                     .with_for_update(skip_locked=True)
                 )
-                jobs = list(result.all())
-                for job in jobs:
-                    job.status = "processing"
-                    job.locked_at = now
+                if job is None:
+                    return None
 
-                return [job.id for job in jobs]
+                job.status = "processing"
+                job.locked_at = now
+                return job.id
 
     async def mark_sent(
         self,
@@ -430,28 +430,19 @@ class NotificationWorker:
         await self.mark_sent(job_id)
         logger.info("Notification job %s sent", job_id)
 
-    async def release_jobs(self, job_ids: list[int]) -> None:
-        if not job_ids:
-            return
-        async with self.session_factory() as session:
-            async with session.begin():
-                await session.execute(
-                    update(NotificationJob)
-                    .where(
-                        NotificationJob.id.in_(job_ids),
-                        NotificationJob.status == "processing",
-                    )
-                    .values(status="pending", locked_at=None)
-                )
-
     async def run_once(self, stop: asyncio.Event | None = None) -> int:
-        job_ids = await self.claim_due_jobs()
-        for position, job_id in enumerate(job_ids):
+        processed = 0
+        for _ in range(self.batch_size):
             if stop is not None and stop.is_set():
-                await self.release_jobs(job_ids[position:])
                 break
+
+            job_id = await self.claim_due_job()
+            if job_id is None:
+                break
+
             await self.process_job(job_id)
-        return len(job_ids)
+            processed += 1
+        return processed
 
 
 def install_stop_handlers(stop: asyncio.Event) -> None:

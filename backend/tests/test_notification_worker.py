@@ -340,6 +340,51 @@ class NotificationWorkerIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second.status, "pending")
         self.assertEqual(second.attempts, 0)
 
+    async def test_two_workers_do_not_preclaim_each_others_jobs(self):
+        first_id = await self.add_job()
+        second_id = await self.add_job()
+        first_send_started = asyncio.Event()
+        finish_first_send = asyncio.Event()
+        sent_job_ids: list[int] = []
+
+        async def slow_send(user_id: int, text: str) -> None:
+            first_send_started.set()
+            await finish_first_send.wait()
+            sent_job_ids.append(first_id)
+
+        async def fast_send(user_id: int, text: str) -> None:
+            sent_job_ids.append(second_id)
+
+        first_worker = NotificationWorker(
+            self.session_factory,
+            slow_send,
+            batch_size=2,
+        )
+        second_worker = NotificationWorker(
+            self.session_factory,
+            fast_send,
+            batch_size=2,
+        )
+
+        first_run = asyncio.create_task(first_worker.run_once())
+        await asyncio.wait_for(first_send_started.wait(), timeout=1)
+
+        second_before = await self.get_job(second_id)
+        self.assertEqual(second_before.status, "pending")
+        self.assertIsNone(second_before.locked_at)
+
+        second_processed = await second_worker.run_once()
+        finish_first_send.set()
+        first_processed = await asyncio.wait_for(first_run, timeout=1)
+
+        first = await self.get_job(first_id)
+        second = await self.get_job(second_id)
+        self.assertEqual(first_processed, 1)
+        self.assertEqual(second_processed, 1)
+        self.assertEqual(first.status, "sent")
+        self.assertEqual(second.status, "sent")
+        self.assertCountEqual(sent_job_ids, [first_id, second_id])
+
     async def test_collects_queue_stats(self):
         await self.add_job(status="sent")
         await self.add_job(status="failed")
