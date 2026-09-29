@@ -9,7 +9,7 @@ import {
   formatTimeRange,
 } from "../format";
 import { hasEnded, hasStarted, isFull, slotStatus, useSlotBundle, type SlotBundle } from "../slotData";
-import { Button, ConfirmSheet, ErrorState, InfoRow, ProgressRing, TopBar } from "../ui";
+import { Button, ConfirmSheet, ErrorState, Icon, InfoRow, ProgressRing, TopBar } from "../ui";
 import { useRequest } from "../useRequest";
 
 type Sheet = "join" | "leave" | "joined" | null;
