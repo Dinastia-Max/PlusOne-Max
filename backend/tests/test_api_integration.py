@@ -206,6 +206,27 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(participating_game["role"], "host")
         self.assertEqual(participating_game["participants_count"], 1)
 
+        leave_response = await self.client.delete(
+            f"/slots/{slot['id']}/join",
+            headers=self.headers(101),
+        )
+        self.assertEqual(leave_response.status_code, 409)
+        self.assertEqual(
+            leave_response.json()["detail"],
+            "Host cannot leave own slot",
+        )
+
+        detail = await self.client.get(f"/slots/{slot['id']}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["participants_count"], 1)
+        participants = await self.client.get(
+            f"/slots/{slot['id']}/participants"
+        )
+        self.assertEqual(
+            [participant["user_id"] for participant in participants.json()],
+            [101],
+        )
+
     async def test_host_cannot_create_overlapping_slot(self):
         start_at = datetime.now(timezone.utc) + timedelta(days=2)
         first = await self.client.post(

@@ -82,6 +82,7 @@ const DETAIL_MESSAGES: Record<string, string> = {
   "Slot is full": "Свободных мест не осталось.",
   "Only the host can cancel this slot": "Отменить игру может только организатор.",
   "Participation not found": "Вы не записаны на эту игру.",
+  "Host cannot leave own slot": "Организатор не может выйти из своей игры.",
   "Slot must start in the future": "Игра должна начинаться в будущем.",
   "Invalid or expired MAX init data": AUTH_MESSAGE,
   "MAX authentication is not configured": "Сервер пока не настроен для входа через MAX.",

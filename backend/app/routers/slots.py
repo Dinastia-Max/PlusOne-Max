@@ -305,6 +305,15 @@ async def leave_slot(
                 detail="Participation not found",
             )
 
+        host_id = await session.scalar(
+            select(Slot.host_id).where(Slot.id == slot_id)
+        )
+        if host_id == user_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Host cannot leave own slot",
+            )
+
         await session.delete(participation)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
