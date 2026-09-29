@@ -170,6 +170,18 @@ class LeaveSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(session.deleted, [participation])
 
+    async def test_host_cannot_leave_own_slot(self):
+        participation = Participation(slot_id=1, user_id=42)
+        session = FakeSession(participation)
+        session.scalar_results = [42]
+
+        with self.assertRaises(HTTPException) as context:
+            await leave_slot(slot_id=1, user_id=42, session=session)
+
+        self.assertEqual(context.exception.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(context.exception.detail, "Host cannot leave own slot")
+        self.assertEqual(session.deleted, [])
+
     async def test_missing_participation_returns_not_found(self):
         session = FakeSession(None)
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from pydantic import ValidationError
 
-from app.models import Field, NotificationJob, Slot
+from app.models import Field, NotificationJob, Participation, Slot
 from app.routers.slots import create_slot
 from app.schemas import SlotCreate
 
@@ -26,8 +26,10 @@ class TransactionContext:
 
 
 class FakeSession:
-    def __init__(self, field):
+    def __init__(self, field, overlapping_slot_id=None):
         self.field = field
+        self.overlapping_slot_id = overlapping_slot_id
+        self.scalar_statements = []
         self.added = []
 
     def begin(self):
@@ -35,6 +37,10 @@ class FakeSession:
 
     async def execute(self, statement):
         return FakeResult(self.field)
+
+    async def scalar(self, statement):
+        self.scalar_statements.append(statement)
+        return self.overlapping_slot_id
 
     def add(self, value):
         self.added.append(value)
@@ -77,10 +83,19 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.id, 100)
         self.assertEqual(response.host_id, 42)
-        self.assertEqual(response.participants_count, 0)
+        self.assertEqual(response.participants_count, 1)
         self.assertEqual(response.field.id, 1)
         self.assertIsInstance(session.added[0], Slot)
+        participation = next(
+            value
+            for value in session.added
+            if isinstance(value, Participation)
+        )
+        self.assertEqual(participation.slot_id, 100)
+        self.assertEqual(participation.user_id, 42)
+        self.assertTrue(participation.brings_ball)
         self.assertEqual(session.added[0].host_contact, "max:42")
+        self.assertIn("pg_advisory_xact_lock", str(session.scalar_statements[0]))
         notifications = [
             value
             for value in session.added
@@ -111,6 +126,27 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(session.added[0].host_contact, "tel:+79991234567")
+
+    async def test_host_cannot_create_overlapping_slot(self):
+        field = Field(
+            id=1,
+            name="Test field",
+            address="Test address",
+            district="Test district",
+            is_active=True,
+        )
+        session = FakeSession(field, overlapping_slot_id=99)
+
+        with self.assertRaises(HTTPException) as context:
+            await create_slot(
+                slot_data_in=valid_slot_data(),
+                user_id=42,
+                session=session,
+            )
+
+        self.assertEqual(context.exception.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(context.exception.detail, "User has an overlapping slot")
+        self.assertEqual(session.added, [])
 
     async def test_active_field_is_required(self):
         session = FakeSession(None)

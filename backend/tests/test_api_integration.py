@@ -170,6 +170,113 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         hidden_response = await self.client.get(f"/slots/{slot_id}")
         self.assertEqual(hidden_response.status_code, 404)
 
+    async def test_host_is_always_a_participant(self):
+        create_response = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json=self.slot_payload(),
+        )
+        self.assertEqual(create_response.status_code, 201)
+        slot = create_response.json()
+        self.assertEqual(slot["participants_count"], 1)
+
+        participants = await self.client.get(
+            f"/slots/{slot['id']}/participants"
+        )
+        self.assertEqual(participants.status_code, 200)
+        self.assertEqual(
+            [participant["user_id"] for participant in participants.json()],
+            [101],
+        )
+
+        duplicate = await self.client.post(
+            f"/slots/{slot['id']}/join",
+            headers=self.headers(101),
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(
+            duplicate.json()["detail"],
+            "User has already joined this slot",
+        )
+
+        my_games = await self.client.get(
+            "/users/me/slots",
+            headers=self.headers(101),
+        )
+        self.assertEqual(my_games.status_code, 200)
+        participating_game = next(
+            game for game in my_games.json()
+            if game["id"] == slot["id"]
+        )
+        self.assertEqual(participating_game["role"], "host")
+        self.assertEqual(participating_game["participants_count"], 1)
+
+        leave_response = await self.client.delete(
+            f"/slots/{slot['id']}/join",
+            headers=self.headers(101),
+        )
+        self.assertEqual(leave_response.status_code, 409)
+        self.assertEqual(
+            leave_response.json()["detail"],
+            "Host cannot leave own slot",
+        )
+
+        detail = await self.client.get(f"/slots/{slot['id']}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["participants_count"], 1)
+        participants = await self.client.get(
+            f"/slots/{slot['id']}/participants"
+        )
+        self.assertEqual(
+            [participant["user_id"] for participant in participants.json()],
+            [101],
+        )
+
+    async def test_host_cannot_create_overlapping_slot(self):
+        start_at = datetime.now(timezone.utc) + timedelta(days=2)
+        first = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json=self.slot_payload(start_at=start_at),
+        )
+        self.assertEqual(first.status_code, 201, first.text)
+
+        overlapping = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json=self.slot_payload(start_at=start_at + timedelta(minutes=30)),
+        )
+        self.assertEqual(overlapping.status_code, 409)
+        self.assertEqual(
+            overlapping.json()["detail"],
+            "User has an overlapping slot",
+        )
+
+    async def test_only_one_concurrent_overlapping_creation_succeeds(self):
+        start_at = datetime.now(timezone.utc) + timedelta(days=2)
+        responses = await asyncio.gather(
+            self.client.post(
+                "/slots",
+                headers=self.headers(707),
+                json=self.slot_payload(start_at=start_at),
+            ),
+            self.client.post(
+                "/slots",
+                headers=self.headers(707),
+                json=self.slot_payload(start_at=start_at + timedelta(minutes=30)),
+            ),
+        )
+
+        self.assertEqual(
+            sorted(response.status_code for response in responses),
+            [201, 409],
+        )
+        conflict = next(
+            response for response in responses
+            if response.status_code == 409
+        )
+        self.assertEqual(conflict.json()["detail"], "User has an overlapping slot")
+
     async def test_api_errors(self):
         unauthorized = await self.client.post(
             "/slots",
@@ -183,7 +290,7 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(missing.status_code, 404)
 
-        slot_id = await self.create_slot(max_players=1)
+        slot_id = await self.create_slot(max_players=2)
         first_join = await self.client.post(
             f"/slots/{slot_id}/join",
             headers=self.headers(202),
@@ -301,7 +408,7 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(former_participant.status_code, 403)
 
     async def test_only_one_user_gets_last_place(self):
-        slot_id = await self.create_slot(max_players=1)
+        slot_id = await self.create_slot(max_players=2)
 
         responses = await asyncio.gather(
             self.client.post(
@@ -318,7 +425,7 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         participants = await self.client.get(f"/slots/{slot_id}/participants")
         self.assertEqual(participants.status_code, 200)
-        self.assertEqual(len(participants.json()), 1)
+        self.assertEqual(len(participants.json()), 2)
 
     async def test_notification_jobs_follow_slot_lifecycle(self):
         slot_id = await self.create_slot(
