@@ -9,13 +9,13 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.database import get_db
 from app.main import app
-from app.models import Field, Participation, Slot
+from app.models import Field, NotificationJob, Participation, Slot
 
 
 RUN_INTEGRATION_TESTS = os.getenv("RUN_API_INTEGRATION_TESTS") == "1"
@@ -40,6 +40,7 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         async with self.session_factory() as session:
             async with session.begin():
+                await session.execute(delete(NotificationJob))
                 await session.execute(delete(Participation))
                 await session.execute(delete(Slot))
                 await session.execute(delete(Field))
@@ -116,11 +117,15 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         *,
         host_id: int = 101,
         max_players: int = 10,
+        start_at: datetime | None = None,
     ) -> int:
         response = await self.client.post(
             "/slots",
             headers=self.headers(host_id),
-            json=self.slot_payload(max_players=max_players),
+            json=self.slot_payload(
+                max_players=max_players,
+                start_at=start_at,
+            ),
         )
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()["id"]
@@ -421,6 +426,105 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         participants = await self.client.get(f"/slots/{slot_id}/participants")
         self.assertEqual(participants.status_code, 200)
         self.assertEqual(len(participants.json()), 2)
+
+    async def test_notification_jobs_follow_slot_lifecycle(self):
+        slot_id = await self.create_slot(
+            host_id=101,
+            start_at=datetime.now(timezone.utc) + timedelta(days=2),
+        )
+
+        async with self.session_factory() as session:
+            host_jobs = (
+                await session.scalars(
+                    select(NotificationJob).where(
+                        NotificationJob.slot_id == slot_id,
+                        NotificationJob.recipient_user_id == 101,
+                    )
+                )
+            ).all()
+        self.assertEqual(
+            {job.notification_type for job in host_jobs},
+            {"reminder_24h", "reminder_2h", "game_status_1h"},
+        )
+
+        joined = await self.client.post(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(202),
+        )
+        self.assertEqual(joined.status_code, 204)
+
+        async with self.session_factory() as session:
+            participant_jobs = (
+                await session.scalars(
+                    select(NotificationJob).where(
+                        NotificationJob.slot_id == slot_id,
+                        NotificationJob.recipient_user_id == 202,
+                    )
+                )
+            ).all()
+        self.assertEqual(
+            {job.notification_type for job in participant_jobs},
+            {
+                "joined",
+                "reminder_24h",
+                "reminder_2h",
+                "game_status_1h",
+            },
+        )
+
+        left = await self.client.delete(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(202),
+        )
+        self.assertEqual(left.status_code, 204)
+
+        joined_again = await self.client.post(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(303),
+        )
+        self.assertEqual(joined_again.status_code, 204)
+        canceled = await self.client.delete(
+            f"/slots/{slot_id}",
+            headers=self.headers(101),
+        )
+        self.assertEqual(canceled.status_code, 204)
+
+        async with self.session_factory() as session:
+            user_202_jobs = (
+                await session.scalars(
+                    select(NotificationJob).where(
+                        NotificationJob.slot_id == slot_id,
+                        NotificationJob.recipient_user_id == 202,
+                    )
+                )
+            ).all()
+            cancellation_jobs = (
+                await session.scalars(
+                    select(NotificationJob).where(
+                        NotificationJob.slot_id == slot_id,
+                        NotificationJob.recipient_user_id == 303,
+                        NotificationJob.notification_type == "slot_canceled",
+                    )
+                )
+            ).all()
+            participant_left_jobs = (
+                await session.scalars(
+                    select(NotificationJob).where(
+                        NotificationJob.slot_id == slot_id,
+                        NotificationJob.recipient_user_id == 101,
+                        NotificationJob.notification_type
+                        == "participant_left",
+                    )
+                )
+            ).all()
+
+        self.assertTrue(user_202_jobs)
+        self.assertTrue(
+            all(job.status == "canceled" for job in user_202_jobs)
+        )
+        self.assertEqual(len(cancellation_jobs), 1)
+        self.assertEqual(cancellation_jobs[0].status, "pending")
+        self.assertEqual(len(participant_left_jobs), 1)
 
 
 if __name__ == "__main__":

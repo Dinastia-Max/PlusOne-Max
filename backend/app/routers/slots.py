@@ -7,6 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user_id
 from app.models import Field, Participation, Slot
+from app.notifications import (
+    cancel_slot_notifications,
+    cancel_user_notifications,
+    schedule_participant_left,
+    schedule_slot_canceled,
+    schedule_user_notifications,
+)
 from app.schemas import (
     FieldResponse,
     HostContactResponse,
@@ -126,6 +133,12 @@ async def create_slot(
 
         session.add(slot)
         await session.flush()
+        schedule_user_notifications(
+            session,
+            slot,
+            user_id,
+            include_joined=False,
+        )
 
         session.add(
             Participation(
@@ -209,6 +222,8 @@ async def cancel_slot(
             )
         if slot.canceled_at is None:
             slot.canceled_at = datetime.now(timezone.utc)
+            await cancel_slot_notifications(session, slot.id)
+            await schedule_slot_canceled(session, slot.id)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -278,6 +293,13 @@ async def join_slot(
             )
 
         session.add(Participation(slot_id=slot_id, user_id=user_id))
+        schedule_user_notifications(
+            session,
+            slot,
+            user_id,
+            include_joined=True,
+            now=now,
+        )
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -315,6 +337,8 @@ async def leave_slot(
             )
 
         await session.delete(participation)
+        await cancel_user_notifications(session, slot_id, user_id)
+        await schedule_participant_left(session, slot_id, user_id)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from pydantic import ValidationError
 
-from app.models import Field, Participation, Slot
+from app.models import Field, NotificationJob, Participation, Slot
 from app.routers.slots import create_slot
 from app.schemas import SlotCreate
 
@@ -85,14 +85,26 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.host_id, 42)
         self.assertEqual(response.participants_count, 1)
         self.assertEqual(response.field.id, 1)
-        self.assertEqual(len(session.added), 2)
         self.assertIsInstance(session.added[0], Slot)
-        self.assertIsInstance(session.added[1], Participation)
-        self.assertEqual(session.added[1].slot_id, 100)
-        self.assertEqual(session.added[1].user_id, 42)
-        self.assertTrue(session.added[1].brings_ball)
+        participation = next(
+            value
+            for value in session.added
+            if isinstance(value, Participation)
+        )
+        self.assertEqual(participation.slot_id, 100)
+        self.assertEqual(participation.user_id, 42)
+        self.assertTrue(participation.brings_ball)
         self.assertEqual(session.added[0].host_contact, "max:42")
         self.assertIn("pg_advisory_xact_lock", str(session.scalar_statements[0]))
+        notifications = [
+            value
+            for value in session.added
+            if isinstance(value, NotificationJob)
+        ]
+        self.assertEqual(
+            {job.notification_type for job in notifications},
+            {"reminder_2h", "game_status_1h"},
+        )
 
     async def test_phone_contact_is_normalized_and_saved(self):
         field = Field(
