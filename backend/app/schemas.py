@@ -39,6 +39,7 @@ class SlotCreate(BaseModel):
     min_players: int = Field(gt=0)
     max_players: int = Field(gt=0)
     has_ball: bool = False
+    host_participates: bool = True
 
     @model_validator(mode="after")
     def validate_limits(self) -> Self:
