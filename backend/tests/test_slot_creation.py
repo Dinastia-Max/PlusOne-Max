@@ -26,8 +26,9 @@ class TransactionContext:
 
 
 class FakeSession:
-    def __init__(self, field):
+    def __init__(self, field, overlapping_slot_id=None):
         self.field = field
+        self.overlapping_slot_id = overlapping_slot_id
         self.added = []
 
     def begin(self):
@@ -35,6 +36,9 @@ class FakeSession:
 
     async def execute(self, statement):
         return FakeResult(self.field)
+
+    async def scalar(self, statement):
+        return self.overlapping_slot_id
 
     def add(self, value):
         self.added.append(value)
@@ -105,6 +109,46 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.participants_count, 0)
         self.assertEqual(len(session.added), 1)
         self.assertIsInstance(session.added[0], Slot)
+
+    async def test_participating_host_cannot_create_overlapping_slot(self):
+        field = Field(
+            id=1,
+            name="Test field",
+            address="Test address",
+            district="Test district",
+            is_active=True,
+        )
+        session = FakeSession(field, overlapping_slot_id=99)
+
+        with self.assertRaises(HTTPException) as context:
+            await create_slot(
+                slot_data_in=valid_slot_data(host_participates=True),
+                user_id=42,
+                session=session,
+            )
+
+        self.assertEqual(context.exception.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(context.exception.detail, "User has an overlapping slot")
+        self.assertEqual(session.added, [])
+
+    async def test_non_participating_host_can_create_overlapping_slot(self):
+        field = Field(
+            id=1,
+            name="Test field",
+            address="Test address",
+            district="Test district",
+            is_active=True,
+        )
+        session = FakeSession(field, overlapping_slot_id=99)
+
+        response = await create_slot(
+            slot_data_in=valid_slot_data(host_participates=False),
+            user_id=42,
+            session=session,
+        )
+
+        self.assertEqual(response.id, 100)
+        self.assertEqual(len(session.added), 1)
 
     async def test_active_field_is_required(self):
         session = FakeSession(None)

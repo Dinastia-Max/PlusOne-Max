@@ -105,6 +105,16 @@ async def create_slot(
             max_players=slot_data_in.max_players,
             has_ball=slot_data_in.has_ball,
         )
+        if slot_data_in.host_participates:
+            overlapping_slot_id = await session.scalar(
+                overlapping_slots_query(user_id, slot)
+            )
+            if overlapping_slot_id is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="User has an overlapping slot",
+                )
+
         session.add(slot)
         await session.flush()
 
