@@ -57,7 +57,7 @@ def slot_row():
         address="1 Football Street",
         district="SVAO",
     )
-    return slot, field, 7
+    return slot, field, 7, 1
 
 
 class CurrentUserSlotsTest(unittest.IsolatedAsyncioTestCase):
@@ -70,6 +70,7 @@ class CurrentUserSlotsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].id, row[0].id)
         self.assertEqual(result[0].participants_count, 7)
+        self.assertTrue(result[0].has_ball)
         self.assertEqual(result[0].field.id, row[1].id)
         self.assertEqual(result[0].role, "host")
 

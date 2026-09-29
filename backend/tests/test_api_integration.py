@@ -250,6 +250,50 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(participants.json()[0]["is_current_user"])
         self.assertNotIn("user_id", participants.json()[0])
 
+    async def test_participant_can_bring_ball(self):
+        create_response = await self.client.post(
+            "/slots",
+            headers=self.headers(101),
+            json={**self.slot_payload(), "has_ball": False},
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.text)
+        slot_id = create_response.json()["id"]
+        self.assertFalse(create_response.json()["has_ball"])
+
+        joined = await self.client.post(
+            f"/slots/{slot_id}/join",
+            headers=self.headers(202),
+            json={"brings_ball": True},
+        )
+        self.assertEqual(joined.status_code, 204, joined.text)
+
+        detail = await self.client.get(f"/slots/{slot_id}")
+        self.assertEqual(detail.status_code, 200)
+        self.assertTrue(detail.json()["has_ball"])
+
+        public_list = await self.client.get("/slots")
+        public_slot = next(item for item in public_list.json() if item["id"] == slot_id)
+        self.assertTrue(public_slot["has_ball"])
+
+        my_games = await self.client.get(
+            "/users/me/slots",
+            headers=self.headers(202),
+        )
+        participant_slot = next(
+            item for item in my_games.json() if item["id"] == slot_id
+        )
+        self.assertTrue(participant_slot["has_ball"])
+
+        participants = await self.client.get(
+            f"/slots/{slot_id}/participants",
+            headers=self.headers(101),
+        )
+        self.assertEqual(participants.status_code, 200)
+        self.assertEqual(
+            [participant["brings_ball"] for participant in participants.json()],
+            [False, True],
+        )
+
     async def test_participant_list_is_private_and_hides_max_ids(self):
         slot_id = await self.create_slot(host_id=101)
 

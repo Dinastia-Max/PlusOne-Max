@@ -17,6 +17,7 @@ from app.notifications import (
 from app.schemas import (
     FieldResponse,
     HostContactResponse,
+    JoinSlotRequest,
     ParticipantResponse,
     SlotCreate,
     SlotDetail,
@@ -31,6 +32,7 @@ def slot_data(
     slot: Slot,
     field: Field,
     participants_count: int,
+    participants_with_ball: int = 0,
 ) -> dict:
     return {
         "id": slot.id,
@@ -38,7 +40,7 @@ def slot_data(
         "end_at": slot.end_at,
         "max_players": slot.max_players,
         "participants_count": participants_count,
-        "has_ball": slot.has_ball,
+        "has_ball": slot.has_ball or participants_with_ball > 0,
         "field": FieldResponse.model_validate(field),
     }
 
@@ -47,9 +49,12 @@ def slots_query():
     participants_count = func.count(Participation.user_id).label(
         "participants_count"
     )
+    participants_with_ball = func.count().filter(
+        Participation.brings_ball.is_(True)
+    ).label("participants_with_ball")
 
     return (
-        select(Slot, Field, participants_count)
+        select(Slot, Field, participants_count, participants_with_ball)
         .join(Field, Field.id == Slot.field_id)
         .outerjoin(Participation, Participation.slot_id == Slot.id)
         .where(Slot.canceled_at.is_(None))
@@ -167,8 +172,15 @@ async def get_slots(
     )
 
     return [
-        SlotListItem(**slot_data(slot, field, participants_count))
-        for slot, field, participants_count in result.all()
+        SlotListItem(
+            **slot_data(
+                slot,
+                field,
+                participants_count,
+                participants_with_ball,
+            )
+        )
+        for slot, field, participants_count, participants_with_ball in result.all()
     ]
 
 
@@ -189,9 +201,14 @@ async def get_slot(
             detail="Slot not found",
         )
 
-    slot, field, participants_count = row
+    slot, field, participants_count, participants_with_ball = row
     return SlotDetail(
-        **slot_data(slot, field, participants_count),
+        **slot_data(
+            slot,
+            field,
+            participants_count,
+            participants_with_ball,
+        ),
         min_players=slot.min_players,
         is_host=user_id is not None and slot.host_id == user_id,
     )
@@ -230,6 +247,7 @@ async def cancel_slot(
 @router.post("/{slot_id}/join", status_code=status.HTTP_204_NO_CONTENT)
 async def join_slot(
     slot_id: int,
+    join_data: JoinSlotRequest | None = None,
     user_id: int = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
@@ -291,7 +309,13 @@ async def join_slot(
                 detail="Slot is full",
             )
 
-        session.add(Participation(slot_id=slot_id, user_id=user_id))
+        session.add(
+            Participation(
+                slot_id=slot_id,
+                user_id=user_id,
+                brings_ball=join_data.brings_ball if join_data else False,
+            )
+        )
         schedule_user_notifications(
             session,
             slot,

@@ -76,7 +76,10 @@ export default function Manage({
                     <Avatar name={String(index + 1)} tone={TONES[index % TONES.length]} />
                     <div>
                       <strong>Участник {index + 1}</strong>
-                      <span>Записался {formatDateTime(participant.joined_at)}</span>
+                      <span>
+                        Записался {formatDateTime(participant.joined_at)}
+                        {participant.brings_ball ? " · принесёт мяч" : ""}
+                      </span>
                     </div>
                   </div>
                 ))}

@@ -388,6 +388,7 @@ export function ConfirmSheet({
   onConfirm,
   onClose,
   hideDismiss = false,
+  children,
 }: {
   tone: SheetTone;
   icon: IconName;
@@ -400,6 +401,7 @@ export function ConfirmSheet({
   onConfirm: () => void;
   onClose: () => void;
   hideDismiss?: boolean;
+  children?: ReactNode;
 }) {
   return (
     <div className="modal-layer">
@@ -409,6 +411,7 @@ export function ConfirmSheet({
         <div className={`sheet__icon sheet__icon--${tone}`}><Icon name={icon} size={25} /></div>
         <div className="sheet__title">{title}</div>
         <div className="sheet__copy">{copy}</div>
+        {children}
         {error && <div className="sheet__error" role="alert">{error}</div>}
         <div className="sheet__buttons">
           <Button kind={danger ? "danger" : "primary"} onClick={onConfirm} disabled={busy}>

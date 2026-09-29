@@ -10,6 +10,7 @@ from app.database import Base
 from app.main import app
 from app.models import Field, NotificationJob, Participation, Slot
 from app.routers.slots import join_slot, leave_slot, overlapping_slots_query
+from app.schemas import JoinSlotRequest
 from test_support import ConfiguredAuthTestCase
 
 
@@ -84,6 +85,7 @@ class JoinSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(session.added[0].slot_id, 1)
         self.assertEqual(session.added[0].user_id, 42)
+        self.assertFalse(session.added[0].brings_ball)
         notifications = [
             value
             for value in session.added
@@ -94,6 +96,22 @@ class JoinSlotTest(unittest.IsolatedAsyncioTestCase):
             ["joined"],
         )
         self.assertIn("pg_advisory_xact_lock", str(session.scalar_statements[0]))
+
+    async def test_user_can_join_and_bring_ball(self):
+        session = FakeSession(future_slot(), None, participants_count=5)
+
+        response = await join_slot(
+            slot_id=1,
+            join_data=JoinSlotRequest(brings_ball=True),
+            user_id=42,
+            session=session,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        participation = next(
+            value for value in session.added if isinstance(value, Participation)
+        )
+        self.assertTrue(participation.brings_ball)
 
     async def test_missing_slot_returns_not_found(self):
         session = FakeSession(None)
