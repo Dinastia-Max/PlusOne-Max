@@ -79,6 +79,7 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
             slot_data_in=slot_data,
             user_id=42,
             session=session,
+            username="test_user",
         )
 
         self.assertEqual(response.id, 100)
@@ -94,7 +95,7 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(participation.slot_id, 100)
         self.assertEqual(participation.user_id, 42)
         self.assertTrue(participation.brings_ball)
-        self.assertEqual(session.added[0].host_contact, "max:42")
+        self.assertEqual(session.added[0].host_contact, "maxuser:test_user")
         self.assertIn("pg_advisory_xact_lock", str(session.scalar_statements[0]))
         notifications = [
             value
@@ -105,6 +106,26 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
             {job.notification_type for job in notifications},
             {"reminder_2h", "game_status_1h"},
         )
+
+    async def test_max_contact_without_username_is_not_saved(self):
+        field = Field(
+            id=1,
+            name="Test field",
+            address="Test address",
+            district="Test district",
+            is_active=True,
+        )
+        session = FakeSession(field)
+
+        response = await create_slot(
+            slot_data_in=valid_slot_data(),
+            user_id=42,
+            session=session,
+            username=None,
+        )
+
+        self.assertEqual(response.id, 100)
+        self.assertIsNone(session.added[0].host_contact)
 
     async def test_phone_contact_is_normalized_and_saved(self):
         field = Field(

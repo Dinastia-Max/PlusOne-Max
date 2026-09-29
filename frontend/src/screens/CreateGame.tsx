@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ApiError, createSlot, fetchFields, type Field } from "../api";
 import { formatDate, formatDayLabel, formatDuration, localDateKey, localTimeValue } from "../format";
+import { getMaxUser } from "../max";
 import { useRequest } from "../useRequest";
 import { Button, ErrorState, Icon, SelectRow, TopBar } from "../ui";
 
@@ -82,7 +83,8 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
   const [minPlayers, setMinPlayers] = useState(6);
   const [maxPlayers, setMaxPlayers] = useState(10);
   const [hasBall, setHasBall] = useState(true);
-  const [contactType, setContactType] = useState<"max" | "phone" | "none">("max");
+  const hasMaxUsername = Boolean(getMaxUser()?.username);
+  const [contactType, setContactType] = useState<"max" | "phone" | "none">(hasMaxUsername ? "max" : "none");
   const [phone, setPhone] = useState("");
   const [phoneConsent, setPhoneConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -234,7 +236,7 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
                 value={contactType}
                 onChange={(event) => setContactType(event.target.value as "max" | "phone" | "none")}
               >
-                <option value="max">Профиль MAX</option>
+                <option value="max" disabled={!hasMaxUsername}>Профиль MAX</option>
                 <option value="phone">Телефон</option>
                 <option value="none">Не указывать</option>
               </select>
@@ -254,7 +256,12 @@ function Form({ fields, back, created }: { fields: Field[]; back: () => void; cr
               </>
             )}
           </div>
-          <div className="form-hint">Контакт увидят только организатор и записавшиеся участники.</div>
+          <div className="form-hint">Контакт увидят только записавшиеся участники.</div>
+          {!hasMaxUsername && (
+            <div className="form-hint">
+              Чтобы открыть чат в MAX, в профиле нужен username. Пока его нет — укажите телефон.
+            </div>
+          )}
           {contactType === "phone" && (
             <div
               className="check-row contact-consent"
