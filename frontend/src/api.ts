@@ -48,6 +48,7 @@ export type SlotCreate = {
   has_ball: boolean;
   host_contact_type: "max" | "phone" | "none";
   host_phone: string | null;
+  host_participates: boolean;
 };
 
 export type ApiErrorKind =
