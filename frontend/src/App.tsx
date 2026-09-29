@@ -6,6 +6,7 @@ import Manage from "./screens/Manage";
 import MyGames from "./screens/MyGames";
 import Onboarding from "./screens/Onboarding";
 import Profile from "./screens/Profile";
+import { useBackButton } from "./max";
 import { BottomNav, type Screen } from "./ui";
 
 const ONBOARDING_KEY = "plusone.onboarded";
@@ -50,6 +51,12 @@ export default function App() {
   };
 
   const hasNav = ["home", "my", "profile"].includes(screen);
+
+  let goBack: (() => void) | null = null;
+  if (screen === "details") goBack = () => navigate(detailsFrom);
+  else if (screen === "create") goBack = () => navigate("home");
+  else if (screen === "manage") goBack = () => navigate(manageFrom);
+  useBackButton(goBack);
 
   return (
     <div className="app-shell">

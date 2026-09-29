@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 export type MaxUser = {
   id: number;
   first_name?: string;
@@ -10,6 +12,12 @@ type WebAppBridge = {
   initData?: string;
   initDataUnsafe?: { user?: MaxUser };
   ready?: () => void;
+  BackButton?: {
+    show?: () => void;
+    hide?: () => void;
+    onClick?: (callback: () => void) => void;
+    offClick?: (callback: () => void) => void;
+  };
 };
 
 function getWebApp(): WebAppBridge | undefined {
@@ -37,4 +45,25 @@ export function getUserName(user: MaxUser | null): string {
 
 export function signalReady(): void {
   getWebApp()?.ready?.();
+}
+
+export function useBackButton(onBack: (() => void) | null): void {
+  const handlerRef = useRef(onBack);
+  useEffect(() => {
+    handlerRef.current = onBack;
+  });
+
+  const enabled = onBack !== null;
+  useEffect(() => {
+    const button = getWebApp()?.BackButton;
+    if (!enabled || !button) return;
+
+    const callback = () => handlerRef.current?.();
+    button.onClick?.(callback);
+    button.show?.();
+    return () => {
+      button.offClick?.(callback);
+      button.hide?.();
+    };
+  }, [enabled]);
 }
