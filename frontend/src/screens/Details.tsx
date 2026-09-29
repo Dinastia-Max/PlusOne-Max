@@ -8,7 +8,7 @@ import {
   formatMonthShort,
   formatTimeRange,
 } from "../format";
-import { getMaxUser, openMaxLink } from "../max";
+import { openMaxLink } from "../max";
 import { hasEnded, hasStarted, isFull, slotStatus, useSlotBundle, type SlotBundle } from "../slotData";
 import { Button, ConfirmSheet, ErrorState, InfoRow, ProgressRing, TopBar } from "../ui";
 import { useRequest } from "../useRequest";
@@ -111,9 +111,8 @@ export default function Details({
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const me = getMaxUser();
   const bundle = state.status === "success" ? state.data : null;
-  const isHost = bundle !== null && me !== null && bundle.slot.host_id === me.id;
+  const isHost = bundle?.slot.is_host ?? false;
   const joined = bundle !== null && bundle.participants.some((participant) => participant.is_current_user);
 
   const openSheet = (next: Sheet) => {

@@ -139,7 +139,24 @@ class ApiIntegrationTest(unittest.IsolatedAsyncioTestCase):
 
         detail_response = await self.client.get(f"/slots/{slot_id}")
         self.assertEqual(detail_response.status_code, 200)
-        self.assertEqual(detail_response.json()["host_id"], 101)
+        self.assertFalse(detail_response.json()["is_host"])
+        self.assertNotIn("host_id", detail_response.json())
+
+        host_detail_response = await self.client.get(
+            f"/slots/{slot_id}",
+            headers=self.headers(101),
+        )
+        self.assertEqual(host_detail_response.status_code, 200)
+        self.assertTrue(host_detail_response.json()["is_host"])
+        self.assertNotIn("host_id", host_detail_response.json())
+
+        outsider_detail_response = await self.client.get(
+            f"/slots/{slot_id}",
+            headers=self.headers(202),
+        )
+        self.assertEqual(outsider_detail_response.status_code, 200)
+        self.assertFalse(outsider_detail_response.json()["is_host"])
+        self.assertNotIn("host_id", outsider_detail_response.json())
 
         join_response = await self.client.post(
             f"/slots/{slot_id}/join",

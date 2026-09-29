@@ -20,7 +20,7 @@ export type SlotListItem = {
 
 export type SlotDetail = SlotListItem & {
   min_players: number;
-  host_id: number;
+  is_host: boolean;
 };
 
 export type UserSlot = SlotListItem & {

@@ -30,7 +30,7 @@ class UserSlotListItem(SlotListItem):
 
 class SlotDetail(SlotListItem):
     min_players: int
-    host_id: int
+    is_host: bool
 
 
 class SlotCreate(BaseModel):

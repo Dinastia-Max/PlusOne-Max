@@ -82,7 +82,7 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(response.id, 100)
-        self.assertEqual(response.host_id, 42)
+        self.assertTrue(response.is_host)
         self.assertEqual(response.participants_count, 1)
         self.assertEqual(response.field.id, 1)
         self.assertIsInstance(session.added[0], Slot)

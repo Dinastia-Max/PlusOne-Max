@@ -102,3 +102,15 @@ async def get_current_user_id(
             detail="Invalid or expired MAX init data",
             headers={"WWW-Authenticate": "MaxInitData"},
         ) from exc
+
+
+async def get_optional_current_user_id(
+    settings: Annotated[Settings, Depends(get_settings)],
+    init_data: Annotated[
+        str | None,
+        Header(alias="X-Max-Init-Data"),
+    ] = None,
+) -> int | None:
+    if init_data is None:
+        return None
+    return await get_current_user_id(settings=settings, init_data=init_data)

@@ -5,7 +5,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user_id
+from app.dependencies import get_current_user_id, get_optional_current_user_id
 from app.models import Field, Participation, Slot
 from app.notifications import (
     cancel_slot_notifications,
@@ -151,7 +151,7 @@ async def create_slot(
     return SlotDetail(
         **slot_data(slot, field, participants_count=1),
         min_players=slot.min_players,
-        host_id=slot.host_id,
+        is_host=True,
     )
 
 
@@ -177,6 +177,7 @@ async def get_slots(
 @router.get("/{slot_id}", response_model=SlotDetail)
 async def get_slot(
     slot_id: int,
+    user_id: int | None = Depends(get_optional_current_user_id),
     session: AsyncSession = Depends(get_db),
 ) -> SlotDetail:
     result = await session.execute(
@@ -194,7 +195,7 @@ async def get_slot(
     return SlotDetail(
         **slot_data(slot, field, participants_count),
         min_players=slot.min_players,
-        host_id=slot.host_id,
+        is_host=user_id is not None and slot.host_id == user_id,
     )
 
 

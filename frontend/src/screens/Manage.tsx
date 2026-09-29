@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { ApiError, cancelSlot } from "../api";
 import { formatDate, formatDateTime, formatDayLabel, formatTimeRange } from "../format";
-import { getMaxUser } from "../max";
 import { hasEnded, useSlotBundle } from "../slotData";
 import { Avatar, Button, ConfirmSheet, ErrorState, Icon, TopBar } from "../ui";
 
@@ -20,8 +19,6 @@ export default function Manage({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-
-  const me = getMaxUser();
 
   const cancel = async () => {
     setBusy(true);
@@ -45,7 +42,7 @@ export default function Manage({
         </div>
       )}
       {state.status === "error" && <ErrorState error={state.error} retry={reload} />}
-      {state.status === "success" && me?.id !== state.data.slot.host_id && (
+      {state.status === "success" && !state.data.slot.is_host && (
         <div className="state-card">
           <div className="state-card__icon state-card__icon--danger"><Icon name="warning" size={25} /></div>
           <div className="state-card__title">Только для организатора</div>
@@ -53,7 +50,7 @@ export default function Manage({
           <Button kind="secondary" onClick={back}>Назад</Button>
         </div>
       )}
-      {state.status === "success" && me?.id === state.data.slot.host_id && (() => {
+      {state.status === "success" && state.data.slot.is_host && (() => {
         const { slot, participants } = state.data;
         const ended = hasEnded(slot);
         return (
