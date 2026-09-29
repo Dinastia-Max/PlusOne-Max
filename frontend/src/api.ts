@@ -113,6 +113,49 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(kind, `Ошибка сервера (${response.status})`, response.status);
 }
 
+const READ_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000];
+const RETRYABLE_STATUSES = new Set([502, 503, 504]);
+
+function waitForRetry(delay: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(resolve, delay);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        window.clearTimeout(timeout);
+        reject(signal.reason);
+      },
+      { once: true },
+    );
+  });
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const canRetry = (init.method ?? "GET") === "GET";
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (
+        !canRetry ||
+        !RETRYABLE_STATUSES.has(response.status) ||
+        attempt >= READ_RETRY_DELAYS_MS.length
+      ) {
+        return response;
+      }
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      if (!canRetry || attempt >= READ_RETRY_DELAYS_MS.length) throw error;
+    }
+
+    await waitForRetry(READ_RETRY_DELAYS_MS[attempt], signal);
+  }
+}
+
 async function request<T>(
   path: string,
   { method = "GET", body, signal }: { method?: string; body?: unknown; signal?: AbortSignal } = {},
@@ -124,12 +167,12 @@ async function request<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${API_URL}${path}`, {
+    response = await fetchWithRetry(`${API_URL}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
-    });
+    }, signal);
   } catch (error) {
     if (signal?.aborted) throw error;
     throw new ApiError("network", "Сервер недоступен");
