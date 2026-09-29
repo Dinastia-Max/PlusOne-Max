@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ApiError, joinSlot, leaveSlot } from "../api";
+import { ApiError, fetchHostContact, joinSlot, leaveSlot } from "../api";
 import {
   formatDate,
   formatDayLabel,
@@ -8,11 +8,29 @@ import {
   formatMonthShort,
   formatTimeRange,
 } from "../format";
-import { getMaxUser } from "../max";
+import { getMaxUser, openMaxLink } from "../max";
 import { hasEnded, hasStarted, isFull, slotStatus, useSlotBundle, type SlotBundle } from "../slotData";
 import { Button, ConfirmSheet, ErrorState, InfoRow, ProgressRing, TopBar } from "../ui";
+import { useRequest } from "../useRequest";
 
 type Sheet = "join" | "leave" | "joined" | null;
+
+function ContactAction({ slotId }: { slotId: number }) {
+  const [state] = useRequest((signal) => fetchHostContact(slotId, signal), [slotId]);
+  if (state.status !== "success" || state.data.type === "none" || !state.data.href) return null;
+  if (state.data.type === "max") {
+    return (
+      <Button kind="secondary" onClick={() => openMaxLink(state.data.href!)}>
+        Связаться с организатором
+      </Button>
+    );
+  }
+  return (
+    <a className="button button--secondary" href={state.data.href}>
+      Связаться с организатором
+    </a>
+  );
+}
 
 function DetailsSkeleton() {
   return (
@@ -124,6 +142,7 @@ export default function Details({
     if (isHost) {
       return (
         <>
+          <ContactAction slotId={slot.id} />
           <Button kind="secondary" onClick={manage}>Управлять игрой</Button>
           <div className="sticky-action__caption">Вы организатор этой игры</div>
         </>
@@ -132,11 +151,13 @@ export default function Details({
     if (joined) {
       return hasStarted(slot) ? (
         <>
+          <ContactAction slotId={slot.id} />
           <Button kind="secondary" disabled>Вы участвуете</Button>
           <div className="sticky-action__caption">Игра уже началась</div>
         </>
       ) : (
         <>
+          <ContactAction slotId={slot.id} />
           <Button kind="secondary" onClick={() => openSheet("leave")}>Отказаться от участия</Button>
           <div className="sticky-action__caption">Ваше место сразу вернётся в набор</div>
         </>

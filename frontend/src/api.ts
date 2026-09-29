@@ -33,6 +33,12 @@ export type Participant = {
   joined_at: string;
 };
 
+export type HostContact = {
+  type: "max" | "phone" | "none";
+  label: string | null;
+  href: string | null;
+};
+
 export type SlotCreate = {
   field_id: number;
   start_at: string;
@@ -40,6 +46,8 @@ export type SlotCreate = {
   min_players: number;
   max_players: number;
   has_ball: boolean;
+  host_contact_type: "max" | "phone" | "none";
+  host_phone: string | null;
   host_participates: boolean;
 };
 
@@ -154,6 +162,10 @@ export function fetchSlot(id: number, signal?: AbortSignal): Promise<SlotDetail>
 
 export function fetchParticipants(id: number, signal?: AbortSignal): Promise<Participant[]> {
   return requestList<Participant>(`/slots/${id}/participants`, signal);
+}
+
+export function fetchHostContact(id: number, signal?: AbortSignal): Promise<HostContact> {
+  return request<HostContact>(`/slots/${id}/host-contact`, { signal });
 }
 
 export function fetchMySlots(signal?: AbortSignal): Promise<UserSlot[]> {

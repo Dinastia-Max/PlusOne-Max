@@ -9,6 +9,7 @@ from app.dependencies import get_current_user_id
 from app.models import Field, Participation, Slot
 from app.schemas import (
     FieldResponse,
+    HostContactResponse,
     ParticipantResponse,
     SlotCreate,
     SlotDetail,
@@ -104,6 +105,13 @@ async def create_slot(
             min_players=slot_data_in.min_players,
             max_players=slot_data_in.max_players,
             has_ball=slot_data_in.has_ball,
+            host_contact=(
+                f"max:{user_id}"
+                if slot_data_in.host_contact_type == "max"
+                else f"tel:{slot_data_in.host_phone}"
+                if slot_data_in.host_contact_type == "phone"
+                else None
+            ),
         )
         if slot_data_in.host_participates:
             overlapping_slot_id = await session.scalar(
@@ -302,6 +310,59 @@ async def leave_slot(
         await session.delete(participation)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{slot_id}/host-contact",
+    response_model=HostContactResponse,
+)
+async def get_host_contact(
+    slot_id: int,
+    user_id: int = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_db),
+) -> HostContactResponse:
+    result = await session.execute(
+        select(Slot, Participation.user_id)
+        .outerjoin(
+            Participation,
+            and_(
+                Participation.slot_id == Slot.id,
+                Participation.user_id == user_id,
+            ),
+        )
+        .where(Slot.id == slot_id, Slot.canceled_at.is_(None))
+    )
+    row = result.one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Slot not found",
+        )
+
+    slot, participant_user_id = row
+    if slot.host_id != user_id and participant_user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Host contact is available to participants only",
+        )
+
+    if slot.host_contact is None:
+        return HostContactResponse(type="none")
+    if slot.host_contact.startswith("max:"):
+        host_id = slot.host_contact.removeprefix("max:")
+        return HostContactResponse(
+            type="max",
+            label="Написать в MAX",
+            href=f"max://user/{host_id}",
+        )
+    if slot.host_contact.startswith("tel:"):
+        phone = slot.host_contact.removeprefix("tel:")
+        return HostContactResponse(
+            type="phone",
+            label=phone,
+            href=f"tel:{phone}",
+        )
+    return HostContactResponse(type="none")
 
 
 @router.get(

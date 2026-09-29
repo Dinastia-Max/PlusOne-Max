@@ -109,6 +109,28 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.participants_count, 0)
         self.assertEqual(len(session.added), 1)
         self.assertIsInstance(session.added[0], Slot)
+        self.assertEqual(session.added[0].host_contact, "max:42")
+
+    async def test_phone_contact_is_normalized_and_saved(self):
+        field = Field(
+            id=1,
+            name="Test field",
+            address="Test address",
+            district="Test district",
+            is_active=True,
+        )
+        session = FakeSession(field)
+
+        await create_slot(
+            slot_data_in=valid_slot_data(
+                host_contact_type="phone",
+                host_phone="+7 (999) 123-45-67",
+            ),
+            user_id=42,
+            session=session,
+        )
+
+        self.assertEqual(session.added[0].host_contact, "tel:+79991234567")
 
     async def test_participating_host_cannot_create_overlapping_slot(self):
         field = Field(
@@ -183,6 +205,21 @@ class CreateSlotTest(unittest.IsolatedAsyncioTestCase):
 
 
 class SlotCreateSchemaTest(unittest.TestCase):
+    def test_phone_contact_requires_valid_international_phone(self):
+        with self.assertRaises(ValidationError):
+            valid_slot_data(host_contact_type="phone")
+
+        with self.assertRaises(ValidationError):
+            valid_slot_data(host_contact_type="phone", host_phone="89991234567")
+
+    def test_phone_is_discarded_for_non_phone_contact(self):
+        slot_data = valid_slot_data(
+            host_contact_type="max",
+            host_phone="+79991234567",
+        )
+
+        self.assertIsNone(slot_data.host_phone)
+
     def test_host_participates_by_default(self):
         self.assertTrue(valid_slot_data().host_participates)
 
