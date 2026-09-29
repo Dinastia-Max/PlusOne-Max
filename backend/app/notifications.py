@@ -96,7 +96,7 @@ async def schedule_participant_left(
             f"slot:{slot_id}:participant-left:"
             f"{participant_user_id}:{uuid4().hex}"
         ),
-    ).where(Slot.id == slot_id)
+    ).where(Slot.id == slot_id, Slot.host_id != participant_user_id)
 
     await session.execute(
         insert(NotificationJob).from_select(

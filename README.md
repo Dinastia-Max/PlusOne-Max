@@ -294,16 +294,6 @@ Worker обрабатывает задания со статусами `pending`
 очередь с увеличивающейся задержкой. После пяти неудачных попыток по умолчанию
 она получает статус `failed`.
 
-Для постоянной отправки уведомлений на Render нужно создать отдельный
-Background Worker из backend-образа с командой:
-
-```bash
-python -m app.notification_worker
-```
-
-Ему необходимы как минимум `DATABASE_URL` и `MAX_BOT_TOKEN`. Если worker не
-запущен, задания остаются в PostgreSQL и сообщения пользователям не приходят.
-
 Если MAX API недоступен:
 
 - API и база продолжают работать;
@@ -311,6 +301,79 @@ python -m app.notification_worker
 - уведомления остаются в очереди и повторяются worker-ом;
 - диагностика доступна через
   `docker compose logs --tail=200 notification-worker`.
+
+### Worker на Render
+
+Для постоянной отправки уведомлений нужен отдельный **Background Worker** из
+`render.yaml` (New → Blueprint) либо созданный вручную с теми же параметрами:
+
+| Параметр | Значение |
+| --- | --- |
+| Runtime | Docker, `backend/Dockerfile`, context `backend` |
+| Docker command | `python -m app.notification_worker` |
+| `DATABASE_URL`, `MAX_BOT_TOKEN` | те же значения, что у API |
+| `NOTIFICATION_*` | см. `.env.example` (значения по умолчанию подходят) |
+
+Если worker не запущен, задания остаются в PostgreSQL и сообщения пользователям
+не приходят. Бот на Long Polling для рассылки не нужен: его можно остановить, а
+уведомления продолжат доставляться.
+
+Миграции применяет только API (`alembic upgrade head` в команде запуска). Worker
+сам ничего не мигрирует: при старте он ждёт, пока версия схемы в
+`alembic_version` совпадёт с последней миграцией образа, и пишет в лог
+`Waiting for migrations`. Так на первом деплое не возникает гонки и ошибок
+`relation "notification_jobs" does not exist`. Render перезапускает упавший
+worker сам; при остановке (SIGTERM) worker дорабатывает текущее сообщение, а
+нетронутые задания возвращает в очередь. Если в локальной базе нет таблицы
+`notification_jobs`, пересоберите образы: `docker compose up --build -d`.
+
+### Статусы, повторы и наблюдение
+
+| Статус | Значение |
+| --- | --- |
+| `pending` | ждёт `scheduled_at` или повторной попытки |
+| `processing` | взято worker-ом |
+| `sent` | доставлено (`sent_at`) |
+| `failed` | попытки исчерпаны, причина в `last_error` |
+| `canceled` | отменено (игра отменена или участник вышел) |
+
+- Ошибка отправки: повтор через 60, 120, 240, 480 с (далее 960 с), всего
+  `NOTIFICATION_MAX_ATTEMPTS` попыток; `last_error` содержит тип ошибки и тело
+  ответа MAX.
+- Задание, зависшее в `processing` дольше `NOTIFICATION_LOCK_TIMEOUT_SECONDS`
+  (worker упал), возвращается в `pending`; потеря блокировки считается попыткой,
+  поэтому «ядовитое» задание в итоге станет `failed`.
+- Раз в `NOTIFICATION_STATS_INTERVAL_SECONDS` в лог пишется строка
+  `Notification queue: pending=… processing=… sent=… failed=… canceled=… due=… oldest_due_lag=…`;
+  если очередь отстаёт больше 5 минут, уровень — `WARNING`. Каждая неудачная
+  попытка — `WARNING`, окончательный отказ — `ERROR` с id задания, типом и
+  получателем.
+
+Состояние очереди и последние ошибки можно посмотреть SQL-запросами:
+
+```sql
+SELECT status, count(*) FROM notification_jobs GROUP BY status;
+
+SELECT id, notification_type, recipient_user_id, attempts, last_error, scheduled_at
+FROM notification_jobs
+WHERE status = 'failed' OR last_error IS NOT NULL
+ORDER BY id DESC LIMIT 20;
+```
+
+### Smoke-тест доставки
+
+Пользователь должен хотя бы раз открыть диалог с ботом. Скрипт создаёт по одному
+заданию каждого типа (`joined`, `reminder_24h`, `reminder_2h`,
+`game_status_1h`, `slot_canceled`, `participant_left`) для указанного
+пользователя и ждёт, пока работающий worker их отправит:
+
+```bash
+docker compose exec backend python -m app.notification_smoke --user-id <MAX_USER_ID>
+```
+
+На Render запустите ту же команду в Shell сервиса API. Код возврата `0` — все
+шесть сообщений получили статус `sent`. Сквозную проверку триггеров выполните
+по разделу «Основной сценарий проверки».
 
 ## Переменные окружения
 
@@ -335,7 +398,9 @@ Worker:
 - `NOTIFICATION_BATCH_SIZE` — задач за итерацию, по умолчанию 50;
 - `NOTIFICATION_MAX_ATTEMPTS` — максимум попыток, по умолчанию 5;
 - `NOTIFICATION_LOCK_TIMEOUT_SECONDS` — возврат зависшей задачи, 300 секунд;
-- `NOTIFICATION_RETRY_DELAY_SECONDS` — базовая задержка повтора, 60 секунд.
+- `NOTIFICATION_RETRY_DELAY_SECONDS` — базовая задержка повтора, 60 секунд;
+- `NOTIFICATION_STATS_INTERVAL_SECONDS` — период строки со статистикой очереди
+  в логе, 60 секунд.
 
 Если порт `5432` занят, измените только внешний порт:
 
